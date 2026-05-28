@@ -9,10 +9,29 @@ DEFAULT_CONFIG = {
     "brightness": 100,
     "lighting_mode": "static",
     "lighting_speed": 100,
+    "color_hue": 0,
     "lighting_zone": 1,
     "inner_deadzone": 0,
     "outer_deadzone": 100,
-    "key_mappings": {}
+    "key_mappings": {},
+    "joystick_left": {
+        "is_circle": True,
+        "deadzone_min": 5,
+        "antideadzone_min": 0,
+        "deadzone_max": 100,
+        "antideadzone_max": 100,
+        "curve_preset": "linear",
+        "curve_intensity": 50
+    },
+    "joystick_right": {
+        "is_circle": True,
+        "deadzone_min": 5,
+        "antideadzone_min": 0,
+        "deadzone_max": 100,
+        "antideadzone_max": 100,
+        "curve_preset": "linear",
+        "curve_intensity": 50
+    }
 }
 
 def load_config() -> dict:
@@ -24,7 +43,21 @@ def load_config() -> dict:
         
     try:
         with open(CONFIG_FILE, "r") as f:
-            return json.load(f)
+            config = json.load(f)
+            # Ensure all default keys exist and nested dicts are populated
+            updated = False
+            for k, v in DEFAULT_CONFIG.items():
+                if k not in config:
+                    config[k] = v
+                    updated = True
+                elif isinstance(v, dict) and isinstance(config[k], dict):
+                    for sub_k, sub_v in v.items():
+                        if sub_k not in config[k]:
+                            config[k][sub_k] = sub_v
+                            updated = True
+            if updated:
+                save_config(config)
+            return config
     except Exception:
         return DEFAULT_CONFIG.copy()
 
