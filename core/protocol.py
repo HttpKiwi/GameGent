@@ -2,7 +2,9 @@
 from .transport import send_raw_bytes
 from .hid_keycodes import (
     KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL,
-    keyboard_packet, mouse_button_packet, mouse_scroll_packet
+    CONTROLLER_BUTTON, CONTROLLER_SOURCE,
+    keyboard_packet, mouse_button_packet, mouse_scroll_packet,
+    controller_packet, unbind_packet,
 )
 
 # The absolute, verified hardware mode IDs
@@ -48,35 +50,53 @@ def resolve_button_index(btn: str) -> int:
     """Resolve button name or hex string to index byte."""
     btn = btn.lower().strip()
     
-    button_map = {
-        "c1": 0x29,
-        "c2": 0x2a,
-        "c3": 0x2b,
-        "c4": 0x2c,
-        "t1": 0x26,
-        "t2": 0x27,
-        "t3": 0x28,
-        "l4": 0x24,
-        "r4": 0x25,
-    }
-    if btn in button_map:
-        return button_map[btn]
+    if btn in CONTROLLER_SOURCE:
+        return CONTROLLER_SOURCE[btn]
 
     raise ValueError(f"Unknown button identifier: {btn}")
+
+
+def resolve_target_packet(button_index: int, target: str) -> bytes:
+    """Helper to parse a target and return the corresponding HID packet bytes."""
+    target = target.lower().strip()
+    
+    if target.startswith("key:") or target.startswith("keyboard:"):
+        key_name = target.split(":", 1)[1].strip()
+        if key_name in KEYBOARD_USAGE:
+            return keyboard_packet(button_index, KEYBOARD_USAGE[key_name])
+        raise ValueError(f"Unknown keyboard key: {key_name}")
+        
+    if target.startswith("btn:") or target.startswith("button:") or target.startswith("controller:"):
+        btn_name = target.split(":", 1)[1].strip()
+        if btn_name in CONTROLLER_BUTTON:
+            return controller_packet(button_index, CONTROLLER_BUTTON[btn_name])
+        raise ValueError(f"Unknown controller button: {btn_name}")
+        
+    if target.startswith("mouse:"):
+        mouse_name = target.split(":", 1)[1].strip()
+        if mouse_name in MOUSE_BUTTON:
+            return mouse_button_packet(button_index, MOUSE_BUTTON[mouse_name])
+        if mouse_name in MOUSE_SCROLL:
+            return mouse_scroll_packet(button_index, MOUSE_SCROLL[mouse_name])
+        raise ValueError(f"Unknown mouse target: {mouse_name}")
+
+    if target == "unbind":
+        return unbind_packet(button_index)
+    if target in MOUSE_BUTTON:
+        return mouse_button_packet(button_index, MOUSE_BUTTON[target])
+    if target in MOUSE_SCROLL:
+        return mouse_scroll_packet(button_index, MOUSE_SCROLL[target])
+    if target in KEYBOARD_USAGE:
+        return keyboard_packet(button_index, KEYBOARD_USAGE[target])
+    if target in CONTROLLER_BUTTON:
+        return controller_packet(button_index, CONTROLLER_BUTTON[target])
+        
+    raise ValueError(f"Unknown mapping target: {target}")
 
 
 def apply_mapping(btn: str, target: str):
     """Resolve and apply mapping for a controller button."""
     button_index = resolve_button_index(btn)
-    target = target.lower().strip()
-
-    if target in MOUSE_BUTTON:
-        pkt = mouse_button_packet(button_index, MOUSE_BUTTON[target])
-    elif target in MOUSE_SCROLL:
-        pkt = mouse_scroll_packet(button_index, MOUSE_SCROLL[target])
-    elif target in KEYBOARD_USAGE:
-        pkt = keyboard_packet(button_index, KEYBOARD_USAGE[target])
-    else:
-        raise ValueError(f"Unknown mapping target: {target}")
-
+    pkt = resolve_target_packet(button_index, target)
     send_raw_bytes(pkt)
+

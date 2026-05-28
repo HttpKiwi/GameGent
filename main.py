@@ -12,7 +12,11 @@ def print_usage():
     print("  sudo ./main.py mode <name>      - Set lighting mode (static, rainbow, etc.)")
     print("  sudo ./main.py brightness <0-100> - Set illumination value")
     print("  sudo ./main.py speed <0-100>    - Set animation velocity")
-    print("  sudo ./main.py remap <btn> <target> - Map controller button to key or mouse action")
+    print("  ./main.py remap <btn> <target>  - Map controller button to key or mouse action")
+    print("  ./main.py remap <btn> clear     - Clear mapping for a button")
+    print("\nValid buttons: c1-c4, t1-t3, l4, r4")
+    print("Valid targets: keyboard keys, mouse clicks/scrolls, controller buttons, or 'unbind'")
+    print("               (e.g., 'enter', 'left_click', 'controller:a' to avoid keyboard conflict)")
 
 def main():
     state = core.load_config()
@@ -79,19 +83,63 @@ def main():
     elif command == "remap":
         if len(sys.argv) < 4:
             print("Error: Missing button name or target mapping.")
-            print("Usage: sudo ./main.py remap <button> <target>")
-            print("Example: sudo ./main.py remap c1 left_click")
+            print("Usage: ./main.py remap <button> <target>")
+            print("Example: ./main.py remap c1 left_click")
             return
-        btn = sys.argv[2]
-        target = sys.argv[3]
+        btn = sys.argv[2].lower()
+        target = sys.argv[3].lower()
         
+        # Validate button
+        try:
+            core.resolve_button_index(btn)
+        except ValueError as e:
+            print(f"Error: {e}")
+            print(f"Valid buttons are: {', '.join(core.CONTROLLER_SOURCE.keys())}")
+            return
+            
+        # Validate target
+        if target != "clear":
+            try:
+                core.resolve_target_packet(0, target)
+            except ValueError as e:
+                print(f"Error: {e}")
+                print("Valid targets include:")
+                print("  - Keyboard keys (e.g., 'a', 'escape', 'enter')")
+                print("  - Mouse clicks (e.g., 'left_click', 'right_click', 'button_4')")
+                print("  - Mouse scrolls (e.g., 'scroll_up', 'scroll_down')")
+                print("  - Controller buttons (e.g., 'a', 'lb', 'dpad_up') - use 'controller:a' to resolve ambiguity")
+                print("  - 'unbind' to disable the button")
+                print("  - 'clear' to remove mapping from configuration")
+                return
+
         if "key_mappings" not in state:
             state["key_mappings"] = {}
         
-        state["key_mappings"][btn.lower()] = target.lower()
-        core.apply_mapping(btn, target)
-        core.save_config(state)
-        print(f"Mapped {btn} to {target} and committed to config.")
+        if target == "clear":
+            if btn in state["key_mappings"]:
+                del state["key_mappings"][btn]
+            core.save_config(state)
+            print(f"Removed {btn} mapping from local config.")
+            
+            # Send unbind packet to hardware
+            try:
+                core.apply_mapping(btn, "unbind")
+                print("Successfully cleared mapping on hardware.")
+            except Exception as e:
+                print(f"[!] Warning: Could not clear mapping on hardware: {e}")
+                print("Run 'sudo ./main.py sync' to apply updates.")
+        else:
+            state["key_mappings"][btn] = target
+            core.save_config(state)
+            print(f"Mapped {btn} to {target} in local config.")
+            
+            # Send to hardware
+            try:
+                core.apply_mapping(btn, target)
+                print("Successfully pushed mapping to hardware.")
+            except Exception as e:
+                print(f"[!] Warning: Could not push mapping to hardware: {e}")
+                print("Run 'sudo ./main.py sync' to apply updates.")
 
     else:
         print_usage()

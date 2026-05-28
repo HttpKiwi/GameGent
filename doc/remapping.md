@@ -13,17 +13,17 @@ Offset  Size  Field            Notes
  8       2    Padding           00 00
 10       1    Button index      XX — physical button on the controller
 11       2    Padding           00 00
-13       1    Flag              01 — always 1
-14       2    Report type       02 02 = keyboard | 03 04 = mouse
-16       1    Padding           00
-17      15    HID payload       See below per report type
+ 13       1    Flag              01 — always 1
+ 14       2    Report type       02 02 = keyboard | 03 04 = mouse
+                                 01 01 = controller | 00 00 = unbind
+ 16      16    Payload           See below per report type
 ------  ----  ---------------  -----------------------------------------
 Total: 32 bytes
 ```
 
 ---
 
-## Button Index (bytes 8–9)
+## Button Index (byte 10)
 
 Identifies which physical controller button is being remapped.
 Observed button index codes:
@@ -99,27 +99,89 @@ Bytes 21–31: 00...   (padding)
 
 ---
 
-## Usage from Python
+## Controller Report (`01 01`)
 
-No need to manually map every key. The standard USB HID usage table is
-embedded in `core/hid_keycodes.py` — a single lookup dict.
+Maps a physical button to another controller button. Byte 16 holds the
+target button ID directly (no leading pad byte).
 
-```python
-from core.hid_keycodes import (
-    KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL,
-    keyboard_packet, mouse_button_packet, mouse_scroll_packet,
-)
+### Structure
 
-# Build a packet for any key:
-pkt = keyboard_packet(button_index=0x29, usage_id=KEYBOARD_USAGE["enter"])
-# => bytes ready for os.write(fd, pkt)
-
-# Or mouse button:
-pkt = mouse_button_packet(0x29, MOUSE_BUTTON["left_click"])
-pkt = mouse_scroll_packet(0x29, MOUSE_SCROLL["scroll_up"])
+```
+Byte 16: XX (target button ID — see table below)
+Bytes 17–31: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 (padding)
 ```
 
-## Verified Captures
+### Target Button IDs
 
-Confirmed via USB sniffing for button `0x29` (C1). All match the standard
-HID spec. See `key_binds.json` for hex dump.
+| ID   | Button       | ID   | Button       |
+|------|------------- |------|------------- |
+| 0x00 | B            | 0x0a | Back/Select  |
+| 0x01 | A            | 0x0b | Start        |
+| 0x02 | Y            | 0x0c | D-pad Left   |
+| 0x03 | X            | 0x0d | D-pad Right  |
+| 0x04 | LB           | 0x0e | D-pad Up     |
+| 0x05 | LT           | 0x0f | D-pad Down   |
+| 0x06 | L3           | 0x2d | Screenshot   |
+| 0x07 | RB           |      |              |
+| 0x08 | RT           |      |              |
+| 0x09 | R3 (stick)   |      |              |
+
+### Template
+
+```
+07130501 00000000 0000 {BTN} 0000 01 0101 {TARGET} [15 zero bytes]
+                                    ^^         ^^
+                                    type       target btn at byte 16
+```
+
+---
+
+## Unbind Report (`00 00`)
+
+Disables a physical button entirely.
+
+### Template
+
+```
+07130501 00000000 0000 {BTN} 0000 01 0000 [16 zero bytes]
+                                    ^^
+                                    type
+```
+
+---
+
+## Usage from Python
+
+No need to manually map every key. Lookup tables are in `core/hid_keycodes.py`.
+
+```python
+from core import (
+    KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL, CONTROLLER_BUTTON,
+    keyboard_packet, mouse_button_packet, mouse_scroll_packet,
+    controller_packet, unbind_packet,
+)
+
+# Keyboard key
+pkt = keyboard_packet(0x29, KEYBOARD_USAGE["enter"])
+
+# Mouse
+pkt = mouse_button_packet(0x29, MOUSE_BUTTON["left_click"])
+pkt = mouse_scroll_packet(0x29, MOUSE_SCROLL["scroll_up"])
+
+# Controller button
+pkt = controller_packet(0x24, CONTROLLER_BUTTON["a"])
+
+# Unbind
+pkt = unbind_packet(0x24)
+```
+
+Or use the high-level `apply_mapping` in `core/protocol.py`:
+
+```python
+from core.protocol import apply_mapping
+
+apply_mapping("l4", "a")          # L4 → A button
+apply_mapping("c1", "enter")      # C1 → Enter key
+apply_mapping("l4", "left_click") # L4 → left mouse click
+apply_mapping("l4", "unbind")     # L4 → disabled
+```

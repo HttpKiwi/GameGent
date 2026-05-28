@@ -64,9 +64,47 @@ MOUSE_SCROLL = {
     "scroll_down": 0xff,
 }
 
+# GameSir controller button IDs (target — when remapping a physical button to
+# another controller button)
+CONTROLLER_BUTTON = {
+    "b":          0x00,
+    "a":          0x01,
+    "y":          0x02,
+    "x":          0x03,
+    "lb":         0x04,
+    "lt":         0x05,
+    "l3":         0x06,
+    "rb":         0x07,
+    "rt":         0x08,
+    "r3":         0x09,
+    "back":       0x0a,
+    "start":      0x0b,
+    "dpad_left":  0x0c,
+    "dpad_right": 0x0d,
+    "dpad_up":    0x0e,
+    "dpad_down":  0x0f,
+    "screenshot": 0x2d,
+}
+
+# GameSir physical remappable buttons (sources)
+CONTROLLER_SOURCE = {
+    "c1": 0x29,
+    "c2": 0x2a,
+    "c3": 0x2b,
+    "c4": 0x2c,
+    "t1": 0x26,
+    "t2": 0x27,
+    "t3": 0x28,
+    "l4": 0x24,
+    "r4": 0x25,
+}
+
+
 # Report type markers
-REPORT_KEYBOARD = b"\x02\x02"
-REPORT_MOUSE    = b"\x03\x04"
+REPORT_KEYBOARD   = b"\x02\x02"
+REPORT_MOUSE      = b"\x03\x04"
+REPORT_CONTROLLER = b"\x01\x01"
+REPORT_UNBIND     = b"\x00\x00"
 
 
 def build_remap_packet(button_index: int, report_type: bytes, payload: bytes) -> bytes:
@@ -104,3 +142,15 @@ def mouse_scroll_packet(button_index: int, scroll_value: int) -> bytes:
     """Build remap packet for scroll wheel (0x01 = up, 0xff = down)."""
     payload = bytes([0x00, 0x00, scroll_value, 0x00]) + b"\x00" * 12
     return build_remap_packet(button_index, REPORT_MOUSE, payload)
+
+
+def controller_packet(button_index: int, target_button_id: int) -> bytes:
+    """Build remap packet that maps to another controller button."""
+    payload = bytes([target_button_id]) + b"\x00" * 15
+    return build_remap_packet(button_index, REPORT_CONTROLLER, payload)
+
+
+def unbind_packet(button_index: int) -> bytes:
+    """Build remap packet that unbinds (disables) a physical button."""
+    payload = b"\x00" * 16
+    return build_remap_packet(button_index, REPORT_UNBIND, payload)
