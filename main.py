@@ -16,6 +16,7 @@ from core import (
     GyroConfig, GYRO_OUTPUT_MODES, GYRO_MOTION_MODES, GYRO_METHODS, GYRO_AXIS_MODES,
     set_gyro_config,
     apply_mapping,
+    TriggerConfig, HAIR_MODES, set_trigger_config,
     load_config, save_config,
 )
 from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE
@@ -57,6 +58,23 @@ def cmd_face(args):
     else:
         set_face_button_color(args.button, args.hue, args.saturation, args.lightness)
         print(f"Face {args.button}: hue={args.hue}°")
+
+
+def cmd_trigger(args):
+    left = TriggerConfig(
+        trigger_id=0, hair_mode=args.hair,
+        deadzone_begin=args.dz_begin, deadzone_end=args.dz_end,
+        antideadzone_begin=args.anti_begin, antideadzone_end=args.anti_end,
+        curve_preset=args.curve, curve_intensity=args.curve_intensity,
+    )
+    right = TriggerConfig(
+        trigger_id=1, hair_mode=args.hair,
+        deadzone_begin=args.dz_begin, deadzone_end=args.dz_end,
+        antideadzone_begin=args.anti_begin, antideadzone_end=args.anti_end,
+        curve_preset=args.curve, curve_intensity=args.curve_intensity,
+    )
+    set_trigger_config(left, right)
+    print(f"Trigger: hair={args.hair} dz={args.dz_begin}-{args.dz_end} anti={args.anti_begin}-{args.anti_end} curve={args.curve}")
 
 
 def cmd_rumble(args):
@@ -287,6 +305,17 @@ def main():
     p.add_argument("--y-sat", type=int, default=100)
     p.add_argument("--y-light", type=int, default=50)
     p.set_defaults(func=cmd_face)
+
+    # trigger
+    p = sub.add_parser("trigger", help="Configure trigger deadzones and hair trigger")
+    p.add_argument("--hair", choices=list(HAIR_MODES.keys()), default="off")
+    p.add_argument("--dz-begin", type=int, default=0)
+    p.add_argument("--dz-end", type=int, default=100)
+    p.add_argument("--anti-begin", type=int, default=0)
+    p.add_argument("--anti-end", type=int, default=100)
+    p.add_argument("--curve", choices=list(CURVE_PRESETS.keys()), default="linear")
+    p.add_argument("--curve-intensity", type=int, default=50)
+    p.set_defaults(func=cmd_trigger)
 
     # rumble
     p = sub.add_parser("rumble", help="Set or fire grip rumble")

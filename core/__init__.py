@@ -13,6 +13,7 @@ from .gyro import (
 from .read_state import (
     read_lighting, read_color, read_stick_targeting, read_stick_geometry, read_state,
 )
+from .trigger import TriggerConfig, HAIR_MODES, set_trigger_config
 from .config import load_config, save_config
 from .hid_keycodes import (
     KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL,
