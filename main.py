@@ -47,15 +47,13 @@ def cmd_led(args):
 
 def cmd_face(args):
     if args.button == "all":
-        home = (args.home_hue, args.home_sat, args.home_light) if args.home_hue is not None else None
         set_face_colors(
             (args.a_hue, args.a_sat, args.a_light),
             (args.b_hue, args.b_sat, args.b_light),
             (args.x_hue, args.x_sat, args.x_light),
             (args.y_hue, args.y_sat, args.y_light),
-            home,
         )
-        print(f"Face all: A={args.a_hue}° B={args.b_hue}° X={args.x_hue}° Y={args.y_hue}°" + (f" Home={args.home_hue}°" if args.home_hue is not None else ""))
+        print(f"Face all: A={args.a_hue}° B={args.b_hue}° X={args.x_hue}° Y={args.y_hue}°")
     else:
         set_face_button_color(args.button, args.hue, args.saturation, args.lightness)
         print(f"Face {args.button}: hue={args.hue}°")
@@ -288,9 +286,6 @@ def main():
     p.add_argument("--y-hue", type=int, default=0)
     p.add_argument("--y-sat", type=int, default=100)
     p.add_argument("--y-light", type=int, default=50)
-    p.add_argument("--home-hue", type=int)
-    p.add_argument("--home-sat", type=int, default=100)
-    p.add_argument("--home-light", type=int, default=50)
     p.set_defaults(func=cmd_face)
 
     # rumble

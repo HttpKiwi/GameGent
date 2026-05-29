@@ -77,9 +77,12 @@ def set_led_color(target: str, hue: int, saturation: int = 100, lightness: int =
 
 
 def set_face_button_color(button: str, hue: int, saturation: int = 100, lightness: int = 50):
-    """Set individual button LED color (a, b, x, y, home). Uses persisted cache for others."""
+    """Set individual button LED color (a, b, x, y, home). Uses persisted cache for A/B/X/Y."""
     button = button.lower().strip()
-    positions = {"a": 0, "b": 1, "x": 2, "y": 3, "home": 4}
+    if button == "home":
+        set_led_color("home", hue, saturation, lightness)
+        return
+    positions = {"a": 0, "b": 1, "x": 2, "y": 3}
     if button not in positions:
         raise ValueError(f"Unknown button: {button}. Use 'a', 'b', 'x', 'y', or 'home'.")
     hue = max(0, min(360, hue))
@@ -90,17 +93,17 @@ def set_face_button_color(button: str, hue: int, saturation: int = 100, lightnes
     pos = positions[button]
     config = load_config()
     if "face_leds" not in config:
-        config["face_leds"] = [[0, 100, 50]] * 5
+        config["face_leds"] = [[0, 100, 50], [0, 100, 50], [0, 100, 50], [0, 100, 50]]
     colors = config["face_leds"]
-    if len(colors) < 5:
-        colors.append([0, 100, 50])
+    if len(colors) < 4:
+        colors = [[0, 100, 50]] * 4
     colors[pos] = [compressed_hue, saturation, lightness]
     save_config(config)
     _send_face_packet_from(colors)
 
 
-def set_face_colors(a_hsl: tuple, b_hsl: tuple, x_hsl: tuple, y_hsl: tuple, home_hsl: tuple = None):
-    """Set all button colors at once. Each: (hue, saturation, lightness). home_hsl optional."""
+def set_face_colors(a_hsl: tuple, b_hsl: tuple, x_hsl: tuple, y_hsl: tuple):
+    """Set all 4 face button colors at once. Each: (hue, saturation, lightness)."""
     colors = []
     for h, s, l in [a_hsl, b_hsl, x_hsl, y_hsl]:
         h = max(0, min(360, h))
@@ -108,10 +111,6 @@ def set_face_colors(a_hsl: tuple, b_hsl: tuple, x_hsl: tuple, y_hsl: tuple, home
         s = max(0, min(100, s))
         l = max(0, min(100, l))
         colors.append([ch, s, l])
-    if home_hsl:
-        h, s, l = home_hsl
-        h = max(0, min(360, h))
-        colors.append([(h * 255) // 360, max(0, min(100, s)), max(0, min(100, l))])
     config = load_config()
     config["face_leds"] = colors
     save_config(config)
