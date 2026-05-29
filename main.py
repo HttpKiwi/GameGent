@@ -7,7 +7,7 @@ import time
 
 from core import (
     set_hardware_state, LIGHTING_MODES,
-    set_color,
+    set_color, set_abxy_layout, set_led_color,
     set_stick_config, StickConfig, KeyboardMapping,
     STICK_MODES, CURVE_PRESETS,
     set_rumble_level, fire_rumble,
@@ -33,6 +33,16 @@ def cmd_light(args):
 def cmd_color(args):
     set_color(args.hue)
     print(f"Color: hue={args.hue}°")
+
+
+def cmd_layout(args):
+    set_abxy_layout(args.layout)
+    print(f"Layout: {args.layout}")
+
+
+def cmd_led(args):
+    set_led_color(args.target, args.hue, args.saturation, args.lightness)
+    print(f"LED {args.target}: hue={args.hue}° sat={args.saturation}% light={args.lightness}%")
 
 
 def cmd_rumble(args):
@@ -230,6 +240,19 @@ def main():
     p = sub.add_parser("color", help="Set lighting hue")
     p.add_argument("hue", type=int)
     p.set_defaults(func=cmd_color)
+
+    # layout
+    p = sub.add_parser("layout", help="Set ABXY button layout")
+    p.add_argument("layout", choices=["xbox", "switch"])
+    p.set_defaults(func=cmd_layout)
+
+    # led
+    p = sub.add_parser("led", help="Set per-LED color (panel or home)")
+    p.add_argument("target", choices=["panel", "home"])
+    p.add_argument("hue", type=int)
+    p.add_argument("--saturation", type=int, default=100)
+    p.add_argument("--lightness", type=int, default=50)
+    p.set_defaults(func=cmd_led)
 
     # rumble
     p = sub.add_parser("rumble", help="Set or fire grip rumble")
