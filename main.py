@@ -64,6 +64,8 @@ def cmd_trigger(args):
     left = TriggerConfig(
         trigger_id=0,
         hair_mode=args.left_hair if args.left_hair is not None else args.hair,
+        hair_trigger_begin=args.left_hair_begin if args.left_hair_begin is not None else args.hair_begin,
+        hair_trigger_end=args.left_hair_end if args.left_hair_end is not None else args.hair_end,
         deadzone_begin=args.left_dz_begin if args.left_dz_begin is not None else args.dz_begin,
         deadzone_end=args.left_dz_end if args.left_dz_end is not None else args.dz_end,
         antideadzone_begin=args.left_anti_begin if args.left_anti_begin is not None else args.anti_begin,
@@ -74,6 +76,8 @@ def cmd_trigger(args):
     right = TriggerConfig(
         trigger_id=1,
         hair_mode=args.right_hair if args.right_hair is not None else args.hair,
+        hair_trigger_begin=args.right_hair_begin if args.right_hair_begin is not None else args.hair_begin,
+        hair_trigger_end=args.right_hair_end if args.right_hair_end is not None else args.hair_end,
         deadzone_begin=args.right_dz_begin if args.right_dz_begin is not None else args.dz_begin,
         deadzone_end=args.right_dz_end if args.right_dz_end is not None else args.dz_end,
         antideadzone_begin=args.right_anti_begin if args.right_anti_begin is not None else args.anti_begin,
@@ -318,6 +322,8 @@ def main():
     # trigger
     p = sub.add_parser("trigger", help="Configure trigger deadzones and hair trigger")
     p.add_argument("--hair", choices=list(HAIR_MODES.keys()), default="off", help="Default for both triggers")
+    p.add_argument("--hair-begin", type=int, default=None, help="Hair trigger range begin")
+    p.add_argument("--hair-end", type=int, default=None, help="Hair trigger range end")
     p.add_argument("--dz-begin", type=int, default=0)
     p.add_argument("--dz-end", type=int, default=100)
     p.add_argument("--anti-begin", type=int, default=0)
@@ -326,6 +332,8 @@ def main():
     p.add_argument("--curve-intensity", type=int, default=50)
     # Left trigger overrides
     p.add_argument("--left-hair", choices=list(HAIR_MODES.keys()), default=None)
+    p.add_argument("--left-hair-begin", type=int, default=None)
+    p.add_argument("--left-hair-end", type=int, default=None)
     p.add_argument("--left-dz-begin", type=int, default=None)
     p.add_argument("--left-dz-end", type=int, default=None)
     p.add_argument("--left-anti-begin", type=int, default=None)
@@ -334,6 +342,8 @@ def main():
     p.add_argument("--left-intensity", type=int, default=None)
     # Right trigger overrides
     p.add_argument("--right-hair", choices=list(HAIR_MODES.keys()), default=None)
+    p.add_argument("--right-hair-begin", type=int, default=None)
+    p.add_argument("--right-hair-end", type=int, default=None)
     p.add_argument("--right-dz-begin", type=int, default=None)
     p.add_argument("--right-dz-end", type=int, default=None)
     p.add_argument("--right-anti-begin", type=int, default=None)
