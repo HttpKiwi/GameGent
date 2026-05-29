@@ -7,7 +7,7 @@ import time
 
 from core import (
     set_hardware_state, LIGHTING_MODES,
-    set_color, set_abxy_layout, set_led_color,
+    set_color, set_abxy_layout, set_led_color, set_face_button_color,
     set_stick_config, StickConfig, KeyboardMapping,
     STICK_MODES, CURVE_PRESETS,
     set_rumble_level, fire_rumble,
@@ -43,6 +43,11 @@ def cmd_layout(args):
 def cmd_led(args):
     set_led_color(args.target, args.hue, args.saturation, args.lightness)
     print(f"LED {args.target}: hue={args.hue}° sat={args.saturation}% light={args.lightness}%")
+
+
+def cmd_face(args):
+    set_face_button_color(args.button, args.hue, args.saturation, args.lightness)
+    print(f"Face {args.button}: hue={args.hue}° sat={args.saturation}% light={args.lightness}%")
 
 
 def cmd_rumble(args):
@@ -253,6 +258,14 @@ def main():
     p.add_argument("--saturation", type=int, default=100)
     p.add_argument("--lightness", type=int, default=50)
     p.set_defaults(func=cmd_led)
+
+    # face
+    p = sub.add_parser("face", help="Set face button LED color (A, B, X, Y)")
+    p.add_argument("button", choices=["a", "b", "x", "y"])
+    p.add_argument("hue", type=int)
+    p.add_argument("--saturation", type=int, default=100)
+    p.add_argument("--lightness", type=int, default=50)
+    p.set_defaults(func=cmd_face)
 
     # rumble
     p = sub.add_parser("rumble", help="Set or fire grip rumble")

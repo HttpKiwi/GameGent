@@ -73,3 +73,32 @@ def set_led_color(target: str, hue: int, saturation: int = 100, lightness: int =
     packet[6] = saturation
     packet[7] = lightness
     send_raw_bytes(packet)
+
+
+# Per-button color cache (H, S, L for A, B, X, Y)
+_face_colors = [[0, 100, 50], [0, 100, 50], [0, 100, 50], [0, 100, 50]]
+
+
+def set_face_button_color(button: str, hue: int, saturation: int = 100, lightness: int = 50):
+    """Set individual face button color (A, B, X, Y). Sends all 4 at once."""
+    button = button.lower().strip()
+    positions = {"a": 0, "b": 1, "x": 2, "y": 3}
+    if button not in positions:
+        raise ValueError(f"Unknown face button: {button}. Use 'a', 'b', 'x', or 'y'.")
+    hue = max(0, min(360, hue))
+    compressed_hue = (hue * 255) // 360
+    saturation = max(0, min(100, saturation))
+    lightness = max(0, min(100, lightness))
+
+    pos = positions[button]
+    _face_colors[pos] = [compressed_hue, saturation, lightness]
+
+    packet = bytearray(32)
+    packet[0:4] = [0x07, 0x10, 0x07, 0x03]
+    packet[4] = 0x05
+    for i, (h, s, l) in enumerate(_face_colors):
+        offset = 5 + i * 3
+        packet[offset] = h
+        packet[offset + 1] = s
+        packet[offset + 2] = l
+    send_raw_bytes(packet)
