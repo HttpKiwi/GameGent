@@ -262,6 +262,15 @@ def cmd_status(args):
         gyro = state.get("gyro", {})
         if gyro:
             print(f"Gyro:    output_mode={gyro.get('output_mode', '?')}  button=0x{gyro.get('activate_button', 0):02x}  dz_min={gyro.get('deadzone_min', '?')}")
+        layout = state.get("layout")
+        if layout:
+            print(f"Layout:  {layout}")
+        for name in ["left", "right"]:
+            tr = state.get(f"trigger_{name}", {})
+            if tr:
+                hair = tr.get("hair_mode", 0)
+                hair_names = {0:"off",1:"adaptive",2:"fixed"}
+                print(f"Trigger {name}: hair={hair_names.get(hair, hair)} dz={tr.get('deadzone_begin', '?')}-{tr.get('deadzone_end', '?')} anti={tr.get('antideadzone_begin', '?')}-{tr.get('antideadzone_end', '?')} curve={tr.get('curve_type', '?')}")
         if args.raw:
             for page, data in state.items():
                 if page.startswith("page_"):

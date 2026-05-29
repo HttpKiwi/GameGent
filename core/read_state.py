@@ -63,6 +63,32 @@ def read_stick_geometry(stick_id=0):
     return None
 
 
+def read_trigger(trigger_id=0):
+    """Read trigger config via 07 05 03 02 [id] [00]. Returns raw bytes or None."""
+    fd = open_device()
+    try:
+        drain(fd)
+        d = read_page_register(fd, 0x05, 0x03, trigger_id)
+        if d and d[1] == 0x13 and d[2] == 0x03 and d[3] == 0x02:
+            return d
+    finally:
+        os.close(fd)
+    return None
+
+
+def read_layout():
+    """Read ABXY layout via 07 05 09 02. Returns 'xbox', 'switch', or None."""
+    fd = open_device()
+    try:
+        drain(fd)
+        d = read_page_register(fd, 0x05, 0x09, 0)
+        if d and d[1] == 0x07 and d[2] == 0x09 and d[3] == 0x02:
+            return "xbox" if d[6] == 0x01 else "switch"
+    finally:
+        os.close(fd)
+    return None
+
+
 def read_state():
     state = {}
     fd = open_device()
@@ -115,5 +141,27 @@ def read_state():
             stick["curve_coords"] = list(g[15:21])
         if stick:
             state[f"stick_{name}"] = stick
+
+    # Read triggers
+    for tid, name in [(0, "left"), (1, "right")]:
+        tr = read_trigger(tid)
+        if tr:
+            state[f"trigger_{name}"] = {
+                "hair_mode": tr[5],
+                "hair_begin": tr[6],
+                "hair_end": tr[7],
+                "deadzone_begin": tr[8],
+                "antideadzone_begin": tr[9],
+                "curve_coords": list(tr[10:16]),
+                "deadzone_end": tr[16],
+                "antideadzone_end": tr[17],
+                "curve_type": tr[18],
+                "curve_intensity": tr[19],
+            }
+
+    # Read layout
+    layout = read_layout()
+    if layout:
+        state["layout"] = layout
 
     return state
