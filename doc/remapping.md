@@ -1,187 +1,238 @@
-# GameSir Controller Remapping Protocol
+# GameGent — GameSir Tarantula Pro CLI
 
-## Packet Format
+Configure GameSir Tarantula Pro controller via USB HID. No Windows DLL needed.
 
-All remapping commands are 32-byte (64 hex char) HID packets sent to the dongle
-via `/dev/hidraw*`.
+## Quick Start
 
-```
-Offset  Size  Field            Notes
-------  ----  ---------------  -----------------------------------------
- 0       4    Command header    07 13 05 01 — fixed across all remap pkts
- 4       4    Padding           00 00 00 00
- 8       2    Padding           00 00
-10       1    Button index      XX — physical button on the controller
-11       2    Padding           00 00
- 13       1    Flag              01 — always 1
- 14       2    Report type       02 02 = keyboard | 03 04 = mouse
-                                 01 01 = controller | 00 00 = unbind
- 16      16    Payload           See below per report type
-------  ----  ---------------  -----------------------------------------
-Total: 32 bytes
+```bash
+python3 main.py status          # Read current controller state
+python3 main.py rumble --fire 100 --duration 500   # Test vibration
+python3 main.py light static --brightness 80 --speed 50
+python3 main.py color 240       # Set hue to 240°
 ```
 
----
+## Features
 
-## Button Index (byte 10)
+### Rumble
 
-Identifies which physical controller button is being remapped.
-Observed button index codes:
-
-- `c1` = `0x29`
-- `c2` = `0x2a`
-- `c3` = `0x2b`
-- `c4` = `0x2c`
-- `t1` = `0x26`
-- `t2` = `0x27`
-- `t3` = `0x28`
-- `l4` = `0x24`
-- `r4` = `0x25`
-
----
-
-## Keyboard Report (`02 02`)
-
-Byte 16 is padding (0x00). Byte 17 holds the USB HID keyboard usage ID (page 0x07).
-All mappings use the standard [USB HID Usage Tables](https://www.usb.org/sites/default/files/hut1_5.pdf).
-
-### Structure
-
-```
-Byte 16: 00 (padding)
-Byte 17: XX (usage ID — the keycode)
-Bytes 18–31: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 (padding)
+```bash
+python3 main.py rumble --set 80 --right 60   # Set grip rumble level
+python3 main.py rumble --fire 100            # Burst both motors
+python3 main.py rumble --fire 100 --fire-right 50 --duration 1000
 ```
 
-### Template
+### Lighting
 
-```
-07130501 00000000 0000 {BTN} 0000 01 0202 00{KEYCODE} [14 zero bytes]
-                                    ^^            ^^
-                                    report type   keycode at byte 17
-```
-
-{BTN} = physical button index (0x29 for C1)
-{KEYCODE} = USB HID keyboard usage ID
-
----
-
-## Mouse Report (`03 04`)
-
-Bytes 17–31 encode a standard USB HID mouse report, padded with leading zeros.
-
-### Structure
-
-```
-Byte 17–18: 00 00    (X movement — always zero for button remaps)
-Byte 19:    WH       (wheel: 01 = scroll up, ff = scroll down)
-Byte 20:    BT       (button bitfield — see below)
-Bytes 21–31: 00...   (padding)
+```bash
+python3 main.py light off|static|breathing|colorful|rainbow|radar \
+    --brightness 80 --speed 50
+python3 main.py color 0          # Red (hue 0-360°)
 ```
 
-### Button Bitfield (byte 19)
+### Stick Config
 
-| Mask   | Action         |
-|--------|----------------|
-| 0x01   | Left click     |
-| 0x02   | Right click    |
-| 0x04   | Middle click   |
-| 0x08   | Button 5       |
-| 0x10   | Button 4       |
+```bash
+# Standard modes
+python3 main.py stick left native --circle --deadzone-min 5 --curve linear
+python3 main.py stick right mouse --x-sens 60 --mouse-dpi 75
 
-### Template
+# Keyboard mode with WASD
+python3 main.py stick left keyboard --overlap 65 \
+    --kbd-up 26 --kbd-down 22 --kbd-left 4 --kbd-right 7
 
-```
-07130501 00000000 0000 {BTN} 0000 01 0304 0000 00 {WH} {BT} [12 zero bytes]
-                                      ^^^^            ^^   ^^
-                                      report type     whl  btn
+# Clone mode
+python3 main.py stick left clone
 ```
 
----
+Modes: `native | mouse | keyboard | clone`
+Curves: `linear | expo | s-curve` with `--curve-intensity`
 
-## Controller Report (`01 01`)
+### Gyro / Motion Aim
 
-Maps a physical button to another controller button. Byte 16 holds the
-target button ID directly (no leading pad byte).
+```bash
+# Mouse aim with hold activation
+python3 main.py gyro mouse --motion aim --method hold --button c1 --axis yaw
 
-### Structure
+# Tilt wheel, always on
+python3 main.py gyro mouse --motion tilt --method always --button rb
 
-```
-Byte 16: XX (target button ID — see table below)
-Bytes 17–31: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 (padding)
-```
+# Keyboard output with custom keys
+python3 main.py gyro keyboard --motion aim --method hold --button lt \
+    --overlap 70 --kb-up key:w --kb-down key:s \
+    --kb-left key:a --kb-right key:d
 
-### Target Button IDs
-
-| ID   | Button       | ID   | Button       |
-|------|------------- |------|------------- |
-| 0x00 | B            | 0x0a | Back/Select  |
-| 0x01 | A            | 0x0b | Start        |
-| 0x02 | Y            | 0x0c | D-pad Left   |
-| 0x03 | X            | 0x0d | D-pad Right  |
-| 0x04 | LB           | 0x0e | D-pad Up     |
-| 0x05 | LT           | 0x0f | D-pad Down   |
-| 0x06 | L3           | 0x2d | Screenshot   |
-| 0x07 | RB           |      |              |
-| 0x08 | RT           |      |              |
-| 0x09 | R3 (stick)   |      |              |
-
-### Template
-
-```
-07130501 00000000 0000 {BTN} 0000 01 0101 {TARGET} [15 zero bytes]
-                                    ^^         ^^
-                                    type       target btn at byte 16
+# Sensitivity, deadzones, curves
+python3 main.py gyro mouse --x-sens 75 --y-sens 60 \
+    --deadzone-min 10 --deadzone-max 80 \
+    --antideadzone-min 5 --antideadzone-max 90 \
+    --curve expo --curve-intensity 60 --invert-x
 ```
 
----
+Output modes: `mouse | left_stick | right_stick | keyboard`
+Motion: `aim | tilt`
+Methods: `off | hold | press | always`
+Axis: `yaw | roll | global`
+Activate button: `c1 c2 c3 c4 t1 t2 t3 l4 r4 a b x y lb lt l3 rb rt r3 back start`
 
-## Unbind Report (`00 00`)
+Keyboard targets: `key:X` (scancode), `mouse:scroll_up`, `controller:lt`, `unbind`
 
-Disables a physical button entirely.
+### Button Remapping
 
-### Template
-
-```
-07130501 00000000 0000 {BTN} 0000 01 0000 [16 zero bytes]
-                                    ^^
-                                    type
-```
-
----
-
-## Usage from Python
-
-No need to manually map every key. Lookup tables are in `core/hid_keycodes.py`.
-
-```python
-from core import (
-    KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL, CONTROLLER_BUTTON,
-    keyboard_packet, mouse_button_packet, mouse_scroll_packet,
-    controller_packet, unbind_packet,
-)
-
-# Keyboard key
-pkt = keyboard_packet(0x29, KEYBOARD_USAGE["enter"])
-
-# Mouse
-pkt = mouse_button_packet(0x29, MOUSE_BUTTON["left_click"])
-pkt = mouse_scroll_packet(0x29, MOUSE_SCROLL["scroll_up"])
-
-# Controller button
-pkt = controller_packet(0x24, CONTROLLER_BUTTON["a"])
-
-# Unbind
-pkt = unbind_packet(0x24)
+```bash
+python3 main.py map c1 key:enter          # C1 → Enter key
+python3 main.py map l4 controller:a       # L4 → A button
+python3 main.py map r4 mouse:left_click   # R4 → left click
+python3 main.py map t1 unbind             # T1 → disabled
 ```
 
-Or use the high-level `apply_mapping` in `core/protocol.py`:
+Source buttons: `c1 c2 c3 c4 t1 t2 t3 l4 r4`
+Targets: `key:X`, `controller:X`, `mouse:X`, `unbind`
 
-```python
-from core.protocol import apply_mapping
+### Config
 
-apply_mapping("l4", "a")          # L4 → A button
-apply_mapping("c1", "enter")      # C1 → Enter key
-apply_mapping("l4", "left_click") # L4 → left mouse click
-apply_mapping("l4", "unbind")     # L4 → disabled
+```bash
+python3 main.py config --show             # Show full config
+python3 main.py config --set stick_left.mode=keyboard
 ```
+
+### Status
+
+```bash
+python3 main.py status                    # Human-readable state
+python3 main.py status --json             # JSON export
+python3 main.py status --raw              # Include raw register dumps
+```
+
+## Project Structure
+
+```
+core/
+  __init__.py          # Public API re-exports
+  transport.py         # HID I/O (device discovery, read/write)
+  hid_keycodes.py      # USB HID usage tables + remap packet builders
+  config.py            # JSON config persistence
+  lighting.py          # Lighting modes + color
+  remap.py             # Button remap logic
+  stick.py             # Stick config + curve presets
+  rumble.py            # Grip rumble set/fire/read
+  gyro.py              # Gyro/motion aim config
+  read_state.py        # Full controller state read
+main.py                # CLI entry point (argparse)
+pcapng/                # Reference USB captures
+```
+
+## Remapping Packet Reference
+
+All commands are 32-byte HID output reports. Header `07 13 05 01`.
+
+### Keyboard (`02 02`)
+
+```
+07 13 05 01 00 00 00 00 00 00 {BTN} 00 00 01 02 02 00 {KEY} [14 zeros]
+```
+Byte 10: button index. Byte 17: USB HID keyboard usage ID.
+
+### Mouse (`03 04`)
+
+```
+07 13 05 01 00 00 00 00 00 00 {BTN} 00 00 01 03 04 00 00 00 {BT} [12 zeros]
+```
+Byte 19: button bitfield (0x01=left, 0x02=right, 0x04=middle, 0x08=B5, 0x10=B4).
+
+### Mouse Scroll (`03 04`)
+
+```
+07 13 05 01 00 00 00 00 00 00 {BTN} 00 00 01 03 04 00 00 {WH} 00 [12 zeros]
+```
+Byte 18: scroll value (0x01=up, 0xFF=down).
+
+### Controller (`01 01`)
+
+```
+07 13 05 01 00 00 00 00 00 00 {BTN} 00 00 01 01 01 {TGT} [15 zeros]
+```
+Byte 16: target controller button ID.
+
+### Unbind (`00 00`)
+
+```
+07 13 05 01 00 00 00 00 00 00 {BTN} 00 00 01 00 00 [16 zeros]
+```
+
+## HID Keycode Reference
+
+Common scancodes (full table in `core/hid_keycodes.py`):
+
+| Key | Usage ID | Key | Usage ID |
+|-----|----------|-----|----------|
+| a   | 0x04     | n   | 0x11     |
+| b   | 0x05     | o   | 0x12     |
+| c   | 0x06     | p   | 0x13     |
+| d   | 0x07     | q   | 0x14     |
+| e   | 0x08     | r   | 0x15     |
+| f   | 0x09     | s   | 0x16     |
+| g   | 0x0a     | t   | 0x17     |
+| h   | 0x0b     | u   | 0x18     |
+| i   | 0x0c     | v   | 0x19     |
+| j   | 0x0d     | w   | 0x1a     |
+| k   | 0x0e     | x   | 0x1b     |
+| l   | 0x0f     | y   | 0x1c     |
+| m   | 0x10     | z   | 0x1d     |
+| 1   | 0x1e     | F1  | 0x3a     |
+| F5  | 0x3e     | F7  | 0x40     |
+| enter | 0x28  | space | 0x2c   |
+| left_ctrl | 0xe0 | left_shift | 0xe1 |
+
+## Gyro Protocol Reference
+
+### Targeting Packet (`07 0e 04 03`)
+
+Layout B (mouse/stick mode):
+```
+byte 4:  x_sensitivity
+byte 5:  y_sensitivity
+byte 6:  method (0x04 = enabled, 0x00 = off)
+byte 7:  motion (0x00 = aim, 0x01 = tilt)
+byte 8:  output (0x00 = mouse, 0x01 = right_stick, 0x02 = left_stick)
+byte 9:  activate button
+byte 10: axis (0x02 = yaw, 0x01 = roll, 0x00 = global/disable)
+byte 11-12: dpi (0x32 0x32)
+byte 13: invert X (0x01 = on)
+byte 14: invert Y (0x01 = on)
+```
+
+Layout A (keyboard mode): byte 6 = 0x03, byte 8 = 0x00, byte 4 = overlap%
+
+### Geometry Packet (`07 16 04 01`)
+
+```
+byte 4-9:  reserved
+byte 10:   x_sensitivity
+byte 11:   deadzone_min
+byte 12:   antideadzone_min
+byte 13-18: curve coords (6 bytes)
+byte 19:   deadzone_max
+byte 20:   antideadzone_max
+byte 21:   curve_type (0=linear, 1=expo, 2=s-curve)
+byte 22:   curve_intensity
+```
+
+### Rumble Packets
+
+Set level: `07 09 06 01 [left%] [right%]`, commit: `07 03 08 03`
+Fire motor: `07 07 0a 04 [left%] [right%]` (burst-fire, stop with zeros)
+
+### Lighting Packets
+
+Mode: `07 06 07 01 [brightness] [speed] [mode]`
+Color: `07 10 07 03 04 [hue_byte] [sat] [light]`
+
+### Stick Packets
+
+Targeting: `07 0f 02 03 [stick_id] [x_sens] [y_sens] [0x50] [00 00] [mode] [0x01] [dpi_x] [dpi_y]`
+Geometry: `07 18 02 01 [7b offset] [circle] [0x32] [dz_min] [anti_min] [6b curve] [dz_max] [anti_max] [curve_type] [intensity]`
+
+## Known Limitations
+
+- Button remap state cannot be read back from hardware (write-only)
+- D-pad, trigger, and profile settings not yet implemented

@@ -6,6 +6,9 @@ Native Python CLI to control GameSir controller hardware via Linux. No VMs, no p
 - Control lighting mode, brightness, and animation speed
 - Remap controller buttons to keyboard keys, mouse actions, or other controller buttons
 - Unbind/disable buttons
+- Configure stick modes: native analog, mouse emulation, 4-way keyboard mapper, stick cloning
+- Per-stick curve presets (linear, expo, s-curve), dead zones, and sensitivity
+- Custom directional scancodes in keyboard mode
 - Persistent local profile caching with mapping sync
 - Zero dependencies — Python 3 standard library only
 
@@ -104,4 +107,70 @@ When a target name conflicts (e.g. controller `a` vs keyboard `a`), use a prefix
 sudo ./main.py remap l4 controller:a   # L4 → controller A button
 sudo ./main.py remap l4 key:a          # L4 → keyboard 'a' key
 sudo ./main.py remap l4 mouse:left_click
+```
+
+### Stick Configuration
+
+View stick settings:
+```bash
+./main.py stick left
+./main.py stick right
+```
+
+Set stick mode (native/mouse/keyboard/clone):
+```bash
+sudo ./main.py stick left mode mouse
+sudo ./main.py stick right mode keyboard
+```
+
+Set curve and zones:
+```bash
+sudo ./main.py stick left curve expo
+sudo ./main.py stick left deadzone-min 10
+sudo ./main.py stick left intensity 75
+sudo ./main.py stick right circle false
+```
+
+Sensitivity (0-100):
+```bash
+sudo ./main.py stick left x-sens 60
+sudo ./main.py stick left y-sens 55
+```
+
+Keyboard mode — set directional scancodes:
+```bash
+sudo ./main.py stick left key-up w         # W key (0x1a)
+sudo ./main.py stick left key-up up        # Arrow up (0x52)
+sudo ./main.py stick left key-down s
+sudo ./main.py stick left key-left a
+sudo ./main.py stick left key-right d
+sudo ./main.py stick left key-up controller:b  # B button
+sudo ./main.py stick left key-up mouse:left_click
+```
+
+Mouse mode — set DPI (0-100):
+```bash
+sudo ./main.py stick left mouse-x-dpi 80
+sudo ./main.py stick left mouse-y-dpi 75
+```
+
+Overlap threshold (keyboard mode, 0-100):
+```bash
+sudo ./main.py stick left overlap 60
+sudo ./main.py stick left key-up-overlap 30
+```
+
+Clone mode — right stick mirrors left:
+```bash
+sudo ./main.py stick left mode clone
+```
+
+Full list of stick attributes:
+```
+mode, circle, x-sens, y-sens, overlap,
+mouse-x-dpi, mouse-y-dpi,
+deadzone-min, deadzone-max, antideadzone-min, antideadzone-max,
+curve, intensity,
+key-up, key-down, key-left, key-right,
+key-up-overlap, key-down-overlap, key-left-overlap, key-right-overlap
 ```
