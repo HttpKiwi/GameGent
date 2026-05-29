@@ -6,26 +6,26 @@ from .stick import CURVE_PRESETS
 
 @dataclass
 class TriggerConfig:
-    trigger_id: int = 0              # 0=left, 1=right
-    hair_mode: str = "off"          # off, fixed, adaptive
-    deadzone_begin: int = 0
-    deadzone_end: int = 100
-    antideadzone_begin: int = 0
-    antideadzone_end: int = 100
-    curve_preset: str = "linear"
-    curve_intensity: int = 50
+    trigger_id: int = 0
+    hair_mode: str | None = "off"
+    deadzone_begin: int | None = 0
+    deadzone_end: int | None = 100
+    antideadzone_begin: int | None = 0
+    antideadzone_end: int | None = 100
+    curve_preset: str | None = "linear"
+    curve_intensity: int | None = 50
 
     def __post_init__(self):
-        self.trigger_id = max(0, min(1, self.trigger_id))
-        self.hair_mode = self.hair_mode.lower()
-        self.deadzone_begin = max(0, min(100, self.deadzone_begin))
-        self.deadzone_end = max(0, min(100, self.deadzone_end))
-        self.antideadzone_begin = max(0, min(100, self.antideadzone_begin))
-        self.antideadzone_end = max(0, min(100, self.antideadzone_end))
-        self.curve_preset = self.curve_preset.lower().replace("_", "-")
+        self.trigger_id = max(0, min(1, self.trigger_id or 0))
+        self.hair_mode = (self.hair_mode or "off").lower()
+        self.deadzone_begin = max(0, min(100, self.deadzone_begin or 0))
+        self.deadzone_end = max(0, min(100, self.deadzone_end or 100))
+        self.antideadzone_begin = max(0, min(100, self.antideadzone_begin or 0))
+        self.antideadzone_end = max(0, min(100, self.antideadzone_end or 100))
+        self.curve_preset = (self.curve_preset or "linear").lower().replace("_", "-")
         if self.curve_preset not in CURVE_PRESETS:
             self.curve_preset = "linear"
-        self.curve_intensity = max(0, min(100, self.curve_intensity))
+        self.curve_intensity = max(0, min(100, self.curve_intensity or 50))
 
 
 HAIR_MODES = {"off": 0x00, "fixed": 0x01, "adaptive": 0x02}

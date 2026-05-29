@@ -62,19 +62,28 @@ def cmd_face(args):
 
 def cmd_trigger(args):
     left = TriggerConfig(
-        trigger_id=0, hair_mode=args.hair,
-        deadzone_begin=args.dz_begin, deadzone_end=args.dz_end,
-        antideadzone_begin=args.anti_begin, antideadzone_end=args.anti_end,
-        curve_preset=args.curve, curve_intensity=args.curve_intensity,
+        trigger_id=0,
+        hair_mode=args.left_hair if args.left_hair is not None else args.hair,
+        deadzone_begin=args.left_dz_begin if args.left_dz_begin is not None else args.dz_begin,
+        deadzone_end=args.left_dz_end if args.left_dz_end is not None else args.dz_end,
+        antideadzone_begin=args.left_anti_begin if args.left_anti_begin is not None else args.anti_begin,
+        antideadzone_end=args.left_anti_end if args.left_anti_end is not None else args.anti_end,
+        curve_preset=args.left_curve if args.left_curve is not None else args.curve,
+        curve_intensity=args.left_intensity if args.left_intensity is not None else args.curve_intensity,
     )
     right = TriggerConfig(
-        trigger_id=1, hair_mode=args.hair,
-        deadzone_begin=args.dz_begin, deadzone_end=args.dz_end,
-        antideadzone_begin=args.anti_begin, antideadzone_end=args.anti_end,
-        curve_preset=args.curve, curve_intensity=args.curve_intensity,
+        trigger_id=1,
+        hair_mode=args.right_hair if args.right_hair is not None else args.hair,
+        deadzone_begin=args.right_dz_begin if args.right_dz_begin is not None else args.dz_begin,
+        deadzone_end=args.right_dz_end if args.right_dz_end is not None else args.dz_end,
+        antideadzone_begin=args.right_anti_begin if args.right_anti_begin is not None else args.anti_begin,
+        antideadzone_end=args.right_anti_end if args.right_anti_end is not None else args.anti_end,
+        curve_preset=args.right_curve if args.right_curve is not None else args.curve,
+        curve_intensity=args.right_intensity if args.right_intensity is not None else args.curve_intensity,
     )
     set_trigger_config(left, right)
-    print(f"Trigger: hair={args.hair} dz={args.dz_begin}-{args.dz_end} anti={args.anti_begin}-{args.anti_end} curve={args.curve}")
+    print(f"Left:  hair={left.hair_mode} dz={left.deadzone_begin}-{left.deadzone_end} anti={left.antideadzone_begin}-{left.antideadzone_end} curve={left.curve_preset}")
+    print(f"Right: hair={right.hair_mode} dz={right.deadzone_begin}-{right.deadzone_end} anti={right.antideadzone_begin}-{right.antideadzone_end} curve={right.curve_preset}")
 
 
 def cmd_rumble(args):
@@ -308,13 +317,29 @@ def main():
 
     # trigger
     p = sub.add_parser("trigger", help="Configure trigger deadzones and hair trigger")
-    p.add_argument("--hair", choices=list(HAIR_MODES.keys()), default="off")
+    p.add_argument("--hair", choices=list(HAIR_MODES.keys()), default="off", help="Default for both triggers")
     p.add_argument("--dz-begin", type=int, default=0)
     p.add_argument("--dz-end", type=int, default=100)
     p.add_argument("--anti-begin", type=int, default=0)
     p.add_argument("--anti-end", type=int, default=100)
     p.add_argument("--curve", choices=list(CURVE_PRESETS.keys()), default="linear")
     p.add_argument("--curve-intensity", type=int, default=50)
+    # Left trigger overrides
+    p.add_argument("--left-hair", choices=list(HAIR_MODES.keys()), default=None)
+    p.add_argument("--left-dz-begin", type=int, default=None)
+    p.add_argument("--left-dz-end", type=int, default=None)
+    p.add_argument("--left-anti-begin", type=int, default=None)
+    p.add_argument("--left-anti-end", type=int, default=None)
+    p.add_argument("--left-curve", choices=list(CURVE_PRESETS.keys()), default=None)
+    p.add_argument("--left-intensity", type=int, default=None)
+    # Right trigger overrides
+    p.add_argument("--right-hair", choices=list(HAIR_MODES.keys()), default=None)
+    p.add_argument("--right-dz-begin", type=int, default=None)
+    p.add_argument("--right-dz-end", type=int, default=None)
+    p.add_argument("--right-anti-begin", type=int, default=None)
+    p.add_argument("--right-anti-end", type=int, default=None)
+    p.add_argument("--right-curve", choices=list(CURVE_PRESETS.keys()), default=None)
+    p.add_argument("--right-intensity", type=int, default=None)
     p.set_defaults(func=cmd_trigger)
 
     # rumble
