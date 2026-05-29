@@ -9,10 +9,18 @@ from .hid_keycodes import (
 
 
 def resolve_button_index(btn: str) -> int:
+    """Resolve button name or hex string to index byte. Accepts all controller buttons."""
     btn = btn.lower().strip()
     if btn in CONTROLLER_SOURCE:
         return CONTROLLER_SOURCE[btn]
-    raise ValueError(f"Unknown button identifier: {btn}")
+    if btn in CONTROLLER_BUTTON:
+        return CONTROLLER_BUTTON[btn]
+    if btn.startswith("0x"):
+        return int(btn, 16)
+    try:
+        return int(btn, 10)
+    except ValueError:
+        raise ValueError(f"Unknown button identifier: {btn}")
 
 
 def resolve_target_packet(button_index: int, target: str) -> bytes:
