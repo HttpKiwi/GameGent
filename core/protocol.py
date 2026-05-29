@@ -220,9 +220,11 @@ class KeyboardMapping:
 class GyroConfig:
     output_mode: str = "mouse"           # keyboard, right_stick, mouse, left_stick
     motion_mode: str = "aim"             # aim (joycon-style), tilt (wheel-style)
-    axis_mode: str = "global"            # global, yaw, roll (only in aim mode)
+    axis_mode: str = "yaw"               # yaw, roll, global (only in aim mode)
     activate_button: int = 0x29          # C1 default
     activate_method: str = "hold"        # hold, press, always, off
+    invert_x: bool = False
+    invert_y: bool = False
     x_sensitivity: int = 50
     y_sensitivity: int = 50
     overlap_percent: int = 50            # keyboard mode overlap threshold
@@ -751,17 +753,15 @@ def build_gyro_geometry(config: GyroConfig) -> bytes:
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x16, 0x04, 0x01]
     packet[4:10] = [0x00] * 6        # reserved
-    packet[10] = 0x32                 # fixed
-    packet[11] = 0x00                 # reserved
-    packet[12] = 0x00                 # reserved
-    packet[13] = config.deadzone_min
-    packet[14] = config.antideadzone_min
+    packet[10] = config.x_sensitivity
+    packet[11] = config.deadzone_min
+    packet[12] = config.antideadzone_min
     preset = CURVE_PRESETS.get(config.curve_preset, CURVE_PRESETS["linear"])
-    packet[15:21] = preset["coords"]
-    packet[21] = config.deadzone_max
-    packet[22] = config.antideadzone_max
-    packet[23] = preset["curve_type"]
-    packet[24] = config.curve_intensity
+    packet[13:19] = preset["coords"]
+    packet[19] = config.deadzone_max
+    packet[20] = config.antideadzone_max
+    packet[21] = preset["curve_type"]
+    packet[22] = config.curve_intensity
     return bytes(packet)
 
 
@@ -856,6 +856,8 @@ def build_gyro_targeting(config: GyroConfig) -> bytes:
     packet[10] = GYRO_AXIS_MODES.get(config.axis_mode, 0)
     packet[11] = 0x32
     packet[12] = 0x32
+    packet[13] = 0x01 if config.invert_x else 0x00
+    packet[14] = 0x01 if config.invert_y else 0x00
     return bytes(packet)
 
 

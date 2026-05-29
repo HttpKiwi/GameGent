@@ -119,6 +119,8 @@ def cmd_gyro(args):
         deadzone_max=args.deadzone_max,
         antideadzone_min=args.antideadzone_min,
         antideadzone_max=args.antideadzone_max,
+        invert_x=args.invert_x,
+        invert_y=args.invert_y,
         curve_preset=args.curve,
         curve_intensity=args.curve_intensity,
         kb_up=args.kb_up,
@@ -175,13 +177,14 @@ def cmd_status(args):
             gyro["activate_button"] = t[9]
             gyro["axis"] = t[10]
         if g:
-            gyro["deadzone_min"] = g[13]
-            gyro["antideadzone_min"] = g[14]
-            gyro["curve_coords"] = list(g[15:21])
-            gyro["deadzone_max"] = g[21] if g[21] else 100
-            gyro["antideadzone_max"] = g[22] if g[22] else 100
-            gyro["curve_type"] = g[23] if len(g) > 23 else 0
-            gyro["curve_intensity"] = g[24] if len(g) > 24 else 50
+            gyro["x_sensitivity"] = g[10]
+            gyro["deadzone_min"] = g[11]
+            gyro["antideadzone_min"] = g[12]
+            gyro["curve_coords"] = list(g[13:19])
+            gyro["deadzone_max"] = g[19] if g[19] else 100
+            gyro["antideadzone_max"] = g[20] if g[20] else 100
+            gyro["curve_type"] = g[21] if len(g) > 21 else 0
+            gyro["curve_intensity"] = g[22] if len(g) > 22 else 50
         if gyro:
             state["gyro"] = gyro
     except Exception:
@@ -289,6 +292,8 @@ def main():
     p.add_argument("--kb-down", default="key:s")
     p.add_argument("--kb-left", default="key:a")
     p.add_argument("--kb-right", default="key:d")
+    p.add_argument("--invert-x", action="store_true", help="Invert X axis")
+    p.add_argument("--invert-y", action="store_true", help="Invert Y axis")
     p.set_defaults(func=cmd_gyro)
 
     # config
