@@ -8,6 +8,8 @@ from .stick import CURVE_PRESETS
 class TriggerConfig:
     trigger_id: int = 0
     hair_mode: str | None = "off"
+    hair_trigger_begin: int | None = None   # None = use trigger default (10 for left, 20 for right)
+    hair_trigger_end: int | None = None     # None = use trigger default (30 for left, 5 for right)
     deadzone_begin: int | None = 0
     deadzone_end: int | None = 100
     antideadzone_begin: int | None = 0
@@ -26,10 +28,13 @@ class TriggerConfig:
         if self.curve_preset not in CURVE_PRESETS:
             self.curve_preset = "linear"
         self.curve_intensity = max(0, min(100, self.curve_intensity or 50))
+        if self.hair_trigger_begin is not None:
+            self.hair_trigger_begin = max(0, min(100, self.hair_trigger_begin))
+        if self.hair_trigger_end is not None:
+            self.hair_trigger_end = max(0, min(100, self.hair_trigger_end))
 
 
-HAIR_MODES = {"off": 0x00, "fixed": 0x01, "adaptive": 0x02}
-_TRIGGER_CONSTANTS = {0: (0x0a, 0x1e), 1: (0x14, 0x05)}  # (byte6, byte7) per trigger
+HAIR_MODES = {"off": 0x00, "adaptive": 0x01, "fixed": 0x02}
 
 
 def build_trigger_packet(config: TriggerConfig) -> bytes:
@@ -39,9 +44,11 @@ def build_trigger_packet(config: TriggerConfig) -> bytes:
     packet[4] = config.trigger_id & 1
     packet[5] = HAIR_MODES.get(config.hair_mode, 0)
 
-    c6, c7 = _TRIGGER_CONSTANTS.get(config.trigger_id, (0x0a, 0x1e))
-    packet[6] = c6
-    packet[7] = c7
+    # Hair trigger begin/end (default per trigger)
+    defaults = {0: (0x0a, 0x1e), 1: (0x14, 0x05)}
+    c6, c7 = defaults.get(config.trigger_id, (0x0a, 0x1e))
+    packet[6] = config.hair_trigger_begin if config.hair_trigger_begin is not None else c6
+    packet[7] = config.hair_trigger_end if config.hair_trigger_end is not None else c7
 
     packet[8] = config.deadzone_begin
     packet[9] = config.antideadzone_begin
