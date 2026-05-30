@@ -105,6 +105,7 @@ REPORT_KEYBOARD   = b"\x02\x02"
 REPORT_MOUSE      = b"\x03\x04"
 REPORT_CONTROLLER = b"\x01\x01"
 REPORT_UNBIND     = b"\x00\x00"
+REPORT_TURBO      = b"\x04\x04"
 
 
 def build_remap_packet(button_index: int, report_type: bytes, payload: bytes) -> bytes:
@@ -154,3 +155,28 @@ def unbind_packet(button_index: int) -> bytes:
     """Build remap packet that unbinds (disables) a physical button."""
     payload = b"\x00" * 16
     return build_remap_packet(button_index, REPORT_UNBIND, payload)
+
+
+def turbo_packet(button_index: int, rate_hz: int = 10, continuous: bool = False) -> bytes:
+    """Build turbo/continuous remap packet (07 13 05 01 with report 04 04)."""
+    rate = max(1, min(255, rate_hz))
+    payload = bytes([0x00, 0x00, 0x00, 0x04]) + b"\x00" * 12
+    packet = bytearray(build_remap_packet(button_index, REPORT_TURBO, payload))
+    if continuous:
+        packet[11] = 0x01
+        packet[12] = 0x00
+        packet[13] = 0x01
+    else:
+        packet[11] = 0x01
+        packet[12] = 0x03
+        packet[13] = rate
+    return bytes(packet)
+
+
+def turbo_enable_packet(button_index: int) -> bytes:
+    """Build turbo enable/commit packet (07 13 01 01)."""
+    packet = bytearray(32)
+    packet[0:4] = [0x07, 0x13, 0x01, 0x01]
+    packet[4] = button_index
+    packet[5] = 0xff
+    return bytes(packet)
