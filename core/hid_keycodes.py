@@ -227,17 +227,22 @@ def build_macro_init_packet(button_index: int) -> bytes:
 
 
 def build_macro_step_packet(button_index: int, step_index: int,
-                             target_button_id: int, press_ms: int, release_ms: int) -> bytes:
+                             target_button_id: int, press_ms: int, release_ms: int,
+                             macro_type: int = 0x01, loop: bool = False) -> bytes:
     """Build a macro step packet (07 13 01 01).
     
     Each step: press a controller button at press_ms, release at release_ms
     (offsets from macro start, in milliseconds, 16-bit big-endian).
+    
+    macro_type: 0x01=normal (fire on press), 0x02=long press (fire while held)
+    loop: if True, macro repeats
     """
     pkt = bytearray(32)
     pkt[0:4] = [0x07, 0x13, 0x01, 0x01]
     pkt[4] = button_index
     pkt[5] = step_index
-    pkt[6] = 0x01
+    pkt[6] = macro_type
+    pkt[7] = 0x01 if loop else 0x00
     pkt[10] = 0x01  # controller button type
     pkt[11] = 0x01  # action type
     pkt[12] = target_button_id

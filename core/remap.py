@@ -115,10 +115,13 @@ def apply_combo(btn: str, keys: list[str]):
     send_raw_bytes(commit)
 
 
-def apply_macro(btn: str, steps: list[tuple[str, int, int]]):
+def apply_macro(btn: str, steps: list[tuple[str, int, int]],
+                macro_type: int = 0x01, loop: bool = False):
     """Apply a macro to a button.
     
     steps: list of (button_name_or_id, press_ms, release_ms)
+    macro_type: 0x01=normal (fire on press), 0x02=hold (fire while held)
+    loop: if True, macro repeats
     """
     button_index = resolve_button_index(btn)
     send_raw_bytes(build_macro_init_packet(button_index))
@@ -132,7 +135,8 @@ def apply_macro(btn: str, steps: list[tuple[str, int, int]]):
             btn_id = CONTROLLER_BUTTON[step_btn]
         else:
             btn_id = resolve_button_index(step_btn)
-        send_raw_bytes(build_macro_step_packet(button_index, i, btn_id, press, release))
+        send_raw_bytes(build_macro_step_packet(
+            button_index, i, btn_id, press, release, macro_type, loop))
     commit = bytearray(32)
     commit[0:4] = [0x07, 0x03, 0x08, 0x03]
     send_raw_bytes(commit)

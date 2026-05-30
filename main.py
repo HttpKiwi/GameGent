@@ -237,8 +237,13 @@ def cmd_macro(args):
             sys.exit(1)
         btn, press, release = parts
         steps.append((btn, int(press), int(release)))
-    apply_macro(args.button, steps)
-    print(f"Macro: {args.button} ({len(steps)} steps)")
+    macro_type = 0x02 if args.hold else 0x01
+    apply_macro(args.button, steps, macro_type=macro_type, loop=args.loop)
+    flags = []
+    if args.hold: flags.append("hold")
+    if args.loop: flags.append("loop")
+    extra = f" ({', '.join(flags)})" if flags else ""
+    print(f"Macro: {args.button} ({len(steps)} steps{extra})")
     for i, (btn, p, r) in enumerate(steps):
         print(f"  {i}: {btn} press={p}ms release={r}ms")
 
@@ -475,6 +480,8 @@ def main():
     p = sub.add_parser("macro", help="Record a multi-step macro on a button")
     p.add_argument("button", help="Source button (e.g. l4, c1)")
     p.add_argument("steps", nargs="+", help="Steps as btn:press_ms:release_ms (e.g. lb:0:50 rb:100:110)")
+    p.add_argument("--hold", action="store_true", help="Hold to fire macro (fires while button held)")
+    p.add_argument("--loop", action="store_true", help="Loop macro (repeat)")
     p.set_defaults(func=cmd_macro)
 
     # gyro
