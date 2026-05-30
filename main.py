@@ -97,7 +97,10 @@ def cmd_turbo(args):
 
     btn = resolve_button_index(args.button)
     remap = resolve_target_packet(btn, args.target)
-    turbo = apply_turbo(remap, args.rate, args.continuous)
+    turbo_enabled = args.rate is not None
+    continuous = args.continuous
+    rate = args.rate if turbo_enabled else 1
+    turbo = apply_turbo(remap, rate, continuous, turbo=turbo_enabled)
     enable = turbo_enable_packet(btn)
     commit = bytearray(32)
     commit[0:4] = [0x07, 0x03, 0x08, 0x03]
@@ -110,8 +113,11 @@ def cmd_turbo(args):
     finally:
         os.close(fd)
 
-    mode = "continuous" if args.continuous else f"turbo {args.rate}Hz"
-    print(f"Turbo: {args.button} → {args.target} ({mode})")
+    parts = []
+    if turbo_enabled: parts.append(f"turbo {rate}Hz")
+    if continuous: parts.append("continuous")
+    if not parts: parts.append("remap only")
+    print(f"Turbo: {args.button} → {args.target} ({', '.join(parts)})")
 
 
 def cmd_rumble(args):
@@ -389,8 +395,8 @@ def main():
     p = sub.add_parser("turbo", help="Set turbo/continuous fire on a button")
     p.add_argument("button", help="Button to turbo (e.g. l4, c1, rb)")
     p.add_argument("target", help="Key target (e.g. key:enter, controller:a)")
-    p.add_argument("--rate", type=int, default=10, help="Turbo rate in Hz (default: 10)")
-    p.add_argument("--continuous", action="store_true", help="Continuous fire (toggle on/off)")
+    p.add_argument("--rate", type=int, default=None, help="Turbo rate in Hz")
+    p.add_argument("--continuous", action="store_true", help="Continuous toggle hold")
     p.set_defaults(func=cmd_turbo)
 
     # rumble

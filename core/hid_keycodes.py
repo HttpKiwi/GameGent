@@ -157,19 +157,18 @@ def unbind_packet(button_index: int) -> bytes:
     return build_remap_packet(button_index, REPORT_UNBIND, payload)
 
 
-def apply_turbo(remap_packet: bytes, rate_hz: int = 10, continuous: bool = False) -> bytes:
+def apply_turbo(remap_packet: bytes, rate_hz: int = 10, continuous: bool = False, turbo: bool = True) -> bytes:
     """Inject turbo/continuous flags into a remap packet at bytes 11-13.
     
-    Turbo: byte 11 depends on report type (0x00=keyboard, 0x01=controller/consumer)
-    Continuous: byte 11 always 0x01 when ON, 0x00 when OFF
+    byte 11: continuous toggle (0x00=off, 0x01=on)
+    byte 12: turbo mode (0x02=on, 0x00=off)
+    byte 13: rate Hz (when turbo on) or 0x01
     """
     rate = max(1, min(255, rate_hz))
     pkt = bytearray(remap_packet)
-    report_type = bytes(pkt[14:16])
-    feature = 0x01 if continuous else (0x00 if report_type == b"\x02\x02" else 0x01)
-    pkt[11] = feature
-    pkt[12] = 0x00 if continuous else 0x02
-    pkt[13] = rate
+    pkt[11] = 0x01 if continuous else 0x00
+    pkt[12] = 0x02 if turbo else 0x00
+    pkt[13] = rate if turbo else 0x01
     return bytes(pkt)
 
 
