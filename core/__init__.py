@@ -21,5 +21,5 @@ from .hid_keycodes import (
     CONTROLLER_BUTTON, CONTROLLER_SOURCE,
     REPORT_KEYBOARD, REPORT_MOUSE, REPORT_CONTROLLER, REPORT_UNBIND, REPORT_TURBO,
     build_remap_packet, keyboard_packet, mouse_button_packet, mouse_scroll_packet,
-    controller_packet, unbind_packet, turbo_packet, turbo_enable_packet,
+    controller_packet, unbind_packet, apply_turbo, turbo_enable_packet,
 )

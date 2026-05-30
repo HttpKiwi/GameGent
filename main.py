@@ -17,10 +17,9 @@ from core import (
     set_gyro_config,
     apply_mapping,
     TriggerConfig, HAIR_MODES, set_trigger_config,
-    turbo_packet, turbo_enable_packet,
     load_config, save_config,
 )
-from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE
+from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
 
 
 def cmd_light(args):
@@ -93,11 +92,12 @@ def cmd_trigger(args):
 
 def cmd_turbo(args):
     import os, time
-    from core.remap import resolve_button_index
+    from core.remap import resolve_button_index, resolve_target_packet
     from core.transport import open_device
 
     btn = resolve_button_index(args.button)
-    turbo = turbo_packet(btn, args.rate, args.continuous)
+    remap = resolve_target_packet(btn, args.target)
+    turbo = apply_turbo(remap, args.rate, args.continuous)
     enable = turbo_enable_packet(btn)
     commit = bytearray(32)
     commit[0:4] = [0x07, 0x03, 0x08, 0x03]
@@ -111,7 +111,7 @@ def cmd_turbo(args):
         os.close(fd)
 
     mode = "continuous" if args.continuous else f"turbo {args.rate}Hz"
-    print(f"Turbo: {args.button} ({mode})")
+    print(f"Turbo: {args.button} → {args.target} ({mode})")
 
 
 def cmd_rumble(args):
@@ -386,8 +386,9 @@ def main():
     p.set_defaults(func=cmd_trigger)
 
     # turbo
-    p = sub.add_parser("turbo", help="Set turbo/continuous fire on a mapped button")
+    p = sub.add_parser("turbo", help="Set turbo/continuous fire on a button")
     p.add_argument("button", help="Button to turbo (e.g. l4, c1, rb)")
+    p.add_argument("target", help="Key target (e.g. key:enter, controller:a)")
     p.add_argument("--rate", type=int, default=10, help="Turbo rate in Hz (default: 10)")
     p.add_argument("--continuous", action="store_true", help="Continuous fire (toggle on/off)")
     p.set_defaults(func=cmd_turbo)
