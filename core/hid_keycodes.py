@@ -105,6 +105,8 @@ REPORT_KEYBOARD   = b"\x02\x02"
 REPORT_MOUSE      = b"\x03\x04"
 REPORT_CONTROLLER = b"\x01\x01"
 REPORT_UNBIND     = b"\x00\x00"
+REPORT_COMBO_2KEY = b"\x01\x02"
+REPORT_COMBO_3KEY = b"\x01\x03"
 REPORT_TURBO      = b"\x04\x04"
 
 
@@ -170,6 +172,36 @@ def apply_turbo(remap_packet: bytes, rate_hz: int = 10, continuous: bool = False
     pkt[12] = 0x02 if turbo else 0x00
     pkt[13] = rate if turbo else 0x01
     return bytes(pkt)
+
+
+def resolve_combo_report_type(keys: list[int], key_types: list[str]) -> bytes:
+    """Determine combo report type bytes based on key types.
+    
+    byte14: 01=controller, 02=keyboard, 03=mouse
+    byte15: total payload bytes (for kbd: 1 modifier + N keys; for ctrl/mouse: N keys)
+    """
+    assert len(keys) in (2, 3)
+    types = set(key_types)
+    if types == {"ctrl"}:
+        return bytes([0x01, len(keys)])
+    if types == {"kbd"}:
+        return bytes([0x02, 1 + len(keys)])
+    if types == {"mouse"}:
+        return bytes([0x03, len(keys)])
+    raise ValueError(f"Mixed key types not supported for combos: {types}")
+
+
+def combo_packet(button_index: int, keys: list[int], key_types: list[str]) -> bytes:
+    """Build remap packet for a combo (2 or 3 keys, all same type)."""
+    assert len(keys) in (2, 3)
+    assert len(keys) == len(key_types)
+    report_type = resolve_combo_report_type(keys, key_types)
+    if key_types[0] == "kbd":
+        payload = bytes([0x00] + keys)  # modifier byte + usage IDs
+    else:
+        payload = bytes(keys)
+    payload += b"\x00" * (16 - len(payload))
+    return build_remap_packet(button_index, report_type, payload)
 
 
 def turbo_enable_packet(button_index: int) -> bytes:

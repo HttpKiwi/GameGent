@@ -4,7 +4,7 @@ from .hid_keycodes import (
     KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL,
     CONTROLLER_BUTTON, CONTROLLER_SOURCE,
     keyboard_packet, mouse_button_packet, mouse_scroll_packet,
-    controller_packet, unbind_packet,
+    controller_packet, unbind_packet, combo_packet,
 )
 
 
@@ -59,6 +59,56 @@ def apply_mapping(btn: str, target: str):
     button_index = resolve_button_index(btn)
     pkt = resolve_target_packet(button_index, target)
     send_raw_bytes(pkt)
+    commit = bytearray(32)
+    commit[0:4] = [0x07, 0x03, 0x08, 0x03]
+    send_raw_bytes(commit)
+
+
+def resolve_combo_keys(keys: list[str]) -> tuple[list[int], list[str]]:
+    """Resolve prefixed key targets to (ids, types)."""
+    ids = []
+    types = []
+    for key in keys:
+        key = key.lower().strip()
+        if key.startswith("btn:") or key.startswith("button:") or key.startswith("controller:"):
+            btn_name = key.split(":", 1)[1].strip()
+            if btn_name in CONTROLLER_BUTTON:
+                ids.append(CONTROLLER_BUTTON[btn_name])
+                types.append("ctrl")
+            else:
+                raise ValueError(f"Unknown controller button: {btn_name}")
+        elif key.startswith("key:") or key.startswith("keyboard:"):
+            key_name = key.split(":", 1)[1].strip()
+            if key_name in KEYBOARD_USAGE:
+                ids.append(KEYBOARD_USAGE[key_name])
+                types.append("kbd")
+            else:
+                raise ValueError(f"Unknown keyboard key: {key_name}")
+        elif key.startswith("mouse:"):
+            mouse_name = key.split(":", 1)[1].strip()
+            if mouse_name in MOUSE_BUTTON:
+                ids.append(MOUSE_BUTTON[mouse_name])
+                types.append("mouse")
+            elif mouse_name in MOUSE_SCROLL:
+                ids.append(MOUSE_SCROLL[mouse_name])
+                types.append("mouse")
+            else:
+                raise ValueError(f"Unknown mouse target: {mouse_name}")
+        else:
+            raise ValueError(f"Combo key must have prefix (controller:, key:, mouse:), got: {key}")
+    return ids, types
+
+
+def apply_combo(btn: str, keys: list[str]):
+    button_index = resolve_button_index(btn)
+    key_ids, key_types = resolve_combo_keys(keys)
+    pkt = combo_packet(button_index, key_ids, key_types)
+    send_raw_bytes(pkt)
+    enable = bytearray(32)
+    enable[0:4] = [0x07, 0x13, 0x01, 0x01]
+    enable[4] = button_index
+    enable[5] = 0xff
+    send_raw_bytes(enable)
     commit = bytearray(32)
     commit[0:4] = [0x07, 0x03, 0x08, 0x03]
     send_raw_bytes(commit)

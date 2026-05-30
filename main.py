@@ -16,6 +16,7 @@ from core import (
     GyroConfig, GYRO_OUTPUT_MODES, GYRO_MOTION_MODES, GYRO_METHODS, GYRO_AXIS_MODES,
     set_gyro_config,
     apply_mapping,
+    apply_combo,
     TriggerConfig, HAIR_MODES, set_trigger_config,
     load_config, save_config,
 )
@@ -216,6 +217,14 @@ def cmd_gyro(args):
     set_gyro_config(cfg)
     kb_info = f" keys={args.kb_up}/{args.kb_down}/{args.kb_left}/{args.kb_right}" if args.mode == "keyboard" else ""
     print(f"Gyro: mode={args.mode} motion={args.motion} method={args.method} axis={args.axis} button={args.button}{kb_info}")
+
+
+def cmd_combo(args):
+    if len(args.keys) not in (2, 3):
+        print(f"Combo requires 2 or 3 keys, got {len(args.keys)}")
+        sys.exit(1)
+    apply_combo(args.button, args.keys)
+    print(f"Combo: {args.button} = {args.keys}")
 
 
 def cmd_config(args):
@@ -439,6 +448,12 @@ def main():
     p.add_argument("button")
     p.add_argument("target")
     p.set_defaults(func=cmd_map)
+
+    # combo
+    p = sub.add_parser("combo", help="Set combo keys (press multiple controller buttons together)")
+    p.add_argument("button", help="Source button (e.g. l4, c1)")
+    p.add_argument("keys", nargs="+", help="2 or 3 controller keys (e.g. controller:x controller:y)")
+    p.set_defaults(func=cmd_combo)
 
     # gyro
     p = sub.add_parser("gyro", help="Configure gyro/motion aim")
