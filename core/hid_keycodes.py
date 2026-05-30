@@ -175,10 +175,13 @@ def apply_turbo(remap_packet: bytes, rate_hz: int = 10, continuous: bool = False
 
 
 def resolve_combo_report_type(keys: list[int], key_types: list[str]) -> bytes:
-    """Determine combo report type bytes based on key types.
+    """Determine combo report type bytes.
     
     byte14: 01=controller, 02=keyboard, 03=mouse
-    byte15: total payload bytes (for kbd: 1 modifier + N keys; for ctrl/mouse: N keys)
+    byte15: payload byte count
+      ctrl: N keys
+      kbd:  1 (modifier) + N keys
+      mouse: 4 (always fixed: 3 zeros + bitfield byte)
     """
     assert len(keys) in (2, 3)
     types = set(key_types)
@@ -187,7 +190,7 @@ def resolve_combo_report_type(keys: list[int], key_types: list[str]) -> bytes:
     if types == {"kbd"}:
         return bytes([0x02, 1 + len(keys)])
     if types == {"mouse"}:
-        return bytes([0x03, len(keys)])
+        return bytes([0x03, 0x04])
     raise ValueError(f"Mixed key types not supported for combos: {types}")
 
 
@@ -197,7 +200,12 @@ def combo_packet(button_index: int, keys: list[int], key_types: list[str]) -> by
     assert len(keys) == len(key_types)
     report_type = resolve_combo_report_type(keys, key_types)
     if key_types[0] == "kbd":
-        payload = bytes([0x00] + keys)  # modifier byte + usage IDs
+        payload = bytes([0x00] + keys)
+    elif key_types[0] == "mouse":
+        bitfield = 0
+        for k in keys:
+            bitfield |= k
+        payload = bytes([0x00, 0x00, 0x00, bitfield])
     else:
         payload = bytes(keys)
     payload += b"\x00" * (16 - len(payload))
