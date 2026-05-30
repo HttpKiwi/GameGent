@@ -17,6 +17,7 @@ from core import (
     set_gyro_config,
     apply_mapping,
     apply_combo,
+    apply_macro,
     TriggerConfig, HAIR_MODES, set_trigger_config,
     load_config, save_config,
 )
@@ -225,6 +226,21 @@ def cmd_combo(args):
         sys.exit(1)
     apply_combo(args.button, args.keys)
     print(f"Combo: {args.button} = {args.keys}")
+
+
+def cmd_macro(args):
+    steps = []
+    for spec in args.steps:
+        parts = spec.split(":")
+        if len(parts) != 3:
+            print(f"Invalid step format: {spec} (use btn:press_ms:release_ms)")
+            sys.exit(1)
+        btn, press, release = parts
+        steps.append((btn, int(press), int(release)))
+    apply_macro(args.button, steps)
+    print(f"Macro: {args.button} ({len(steps)} steps)")
+    for i, (btn, p, r) in enumerate(steps):
+        print(f"  {i}: {btn} press={p}ms release={r}ms")
 
 
 def cmd_config(args):
@@ -452,8 +468,14 @@ def main():
     # combo
     p = sub.add_parser("combo", help="Set combo keys (press multiple controller buttons together)")
     p.add_argument("button", help="Source button (e.g. l4, c1)")
-    p.add_argument("keys", nargs="+", help="2 or 3 controller keys (e.g. controller:x controller:y)")
+    p.add_argument("keys", nargs="+", help="2 or 3 keys (e.g. controller:x controller:y)")
     p.set_defaults(func=cmd_combo)
+
+    # macro
+    p = sub.add_parser("macro", help="Record a multi-step macro on a button")
+    p.add_argument("button", help="Source button (e.g. l4, c1)")
+    p.add_argument("steps", nargs="+", help="Steps as btn:press_ms:release_ms (e.g. lb:0:50 rb:100:110)")
+    p.set_defaults(func=cmd_macro)
 
     # gyro
     p = sub.add_parser("gyro", help="Configure gyro/motion aim")

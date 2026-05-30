@@ -5,6 +5,7 @@ from .hid_keycodes import (
     CONTROLLER_BUTTON, CONTROLLER_SOURCE,
     keyboard_packet, mouse_button_packet, mouse_scroll_packet,
     controller_packet, unbind_packet, combo_packet,
+    build_macro_init_packet, build_macro_step_packet,
 )
 
 
@@ -109,6 +110,29 @@ def apply_combo(btn: str, keys: list[str]):
     enable[4] = button_index
     enable[5] = 0xff
     send_raw_bytes(enable)
+    commit = bytearray(32)
+    commit[0:4] = [0x07, 0x03, 0x08, 0x03]
+    send_raw_bytes(commit)
+
+
+def apply_macro(btn: str, steps: list[tuple[str, int, int]]):
+    """Apply a macro to a button.
+    
+    steps: list of (button_name_or_id, press_ms, release_ms)
+    """
+    button_index = resolve_button_index(btn)
+    send_raw_bytes(build_macro_init_packet(button_index))
+    enable = bytearray(32)
+    enable[0:4] = [0x07, 0x13, 0x01, 0x01]
+    enable[4] = button_index
+    enable[5] = 0xff
+    send_raw_bytes(enable)
+    for i, (step_btn, press, release) in enumerate(steps):
+        if step_btn in CONTROLLER_BUTTON:
+            btn_id = CONTROLLER_BUTTON[step_btn]
+        else:
+            btn_id = resolve_button_index(step_btn)
+        send_raw_bytes(build_macro_step_packet(button_index, i, btn_id, press, release))
     commit = bytearray(32)
     commit[0:4] = [0x07, 0x03, 0x08, 0x03]
     send_raw_bytes(commit)

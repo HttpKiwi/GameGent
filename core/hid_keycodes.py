@@ -219,3 +219,31 @@ def turbo_enable_packet(button_index: int) -> bytes:
     packet[4] = button_index
     packet[5] = 0xff
     return bytes(packet)
+
+
+def build_macro_init_packet(button_index: int) -> bytes:
+    """Build macro init packet (07 13 05 01 with report type 00 00)."""
+    return build_remap_packet(button_index, b"\x00\x00", b"\x00" * 16)
+
+
+def build_macro_step_packet(button_index: int, step_index: int,
+                             target_button_id: int, press_ms: int, release_ms: int) -> bytes:
+    """Build a macro step packet (07 13 01 01).
+    
+    Each step: press a controller button at press_ms, release at release_ms
+    (offsets from macro start, in milliseconds, 16-bit big-endian).
+    """
+    pkt = bytearray(32)
+    pkt[0:4] = [0x07, 0x13, 0x01, 0x01]
+    pkt[4] = button_index
+    pkt[5] = step_index
+    pkt[6] = 0x01
+    pkt[10] = 0x01  # controller button type
+    pkt[11] = 0x01  # action type
+    pkt[12] = target_button_id
+    pkt[15] = 0x00
+    pkt[16] = (press_ms >> 8) & 0xff
+    pkt[17] = press_ms & 0xff
+    pkt[18] = (release_ms >> 8) & 0xff
+    pkt[19] = release_ms & 0xff
+    return bytes(pkt)
