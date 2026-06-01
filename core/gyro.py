@@ -11,10 +11,10 @@ from .hid_keycodes import (
 from .stick import CURVE_PRESETS
 
 
-GYRO_OUTPUT_MODES = {"keyboard": 0x03, "right_stick": 0x01, "mouse": 0x00, "left_stick": 0x02}
+GYRO_OUTPUT_MODES = {"left_stick": 0x01, "right_stick": 0x02, "keyboard": 0x03, "mouse": 0x04}
 GYRO_MOTION_MODES = {"aim": 0x00, "tilt": 0x01}
-GYRO_METHODS = {"off": 0x00, "hold": 0x04, "press": 0x04, "always": 0x04}
-GYRO_AXIS_MODES = {"global": 0x00, "yaw": 0x02, "roll": 0x01}
+GYRO_METHODS = {"off": 0x00, "press": 0x01, "hold": 0x02, "always": 0x03}
+GYRO_AXIS_MODES = {"global": 0x00, "yaw": 0x01, "roll": 0x02}
 GYRO_KB_ZONES = {"left": 0x20, "right": 0x21, "up": 0x22, "down": 0x23}
 
 
@@ -78,18 +78,13 @@ def build_gyro_geometry(config: GyroConfig) -> bytes:
 def build_gyro_targeting(config: GyroConfig) -> bytes:
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x0e, 0x04, 0x03]
-    if config.output_mode == "keyboard":
-        packet[4] = config.overlap_percent
-        packet[6] = 0x03
-        packet[8] = 0x00
-    else:
-        packet[4] = config.x_sensitivity
-        packet[6] = GYRO_METHODS.get(config.activate_method, 0)
-        packet[8] = GYRO_OUTPUT_MODES.get(config.output_mode, 0)
+    packet[4] = config.x_sensitivity
     packet[5] = config.y_sensitivity
+    packet[6] = GYRO_OUTPUT_MODES.get(config.output_mode, 0)
     packet[7] = GYRO_MOTION_MODES.get(config.motion_mode, 0)
+    packet[8] = GYRO_AXIS_MODES.get(config.axis_mode, 0)
     packet[9] = config.activate_button
-    packet[10] = GYRO_AXIS_MODES.get(config.axis_mode, 0)
+    packet[10] = GYRO_METHODS.get(config.activate_method, 0)
     packet[11] = 0x32
     packet[12] = 0x32
     packet[13] = 0x01 if config.invert_x else 0x00

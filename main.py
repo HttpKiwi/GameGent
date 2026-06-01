@@ -286,11 +286,11 @@ def cmd_status(args):
         if t:
             gyro["x_sensitivity"] = t[4]
             gyro["y_sensitivity"] = t[5]
-            gyro["method"] = t[6]
+            gyro["output_mode"] = t[6]
             gyro["motion_mode"] = t[7]
-            gyro["output_mode"] = t[8]
+            gyro["axis"] = t[8]
             gyro["activate_button"] = t[9]
-            gyro["axis"] = t[10]
+            gyro["method"] = t[10]
         if g:
             gyro["x_sensitivity"] = g[10]
             gyro["deadzone_min"] = g[11]
