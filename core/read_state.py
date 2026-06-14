@@ -128,8 +128,7 @@ def read_state():
             stick["mode"] = t[10]
             stick["x_sensitivity"] = t[5]
             stick["y_sensitivity"] = t[6]
-            stick["mouse_x_dpi"] = t[12]
-            stick["mouse_y_dpi"] = t[13]
+            stick["mouse_dpi"] = t[12]
         if g:
             stick["is_circle"] = bool(g[11])
             stick["deadzone_min"] = g[13]

@@ -37,8 +37,7 @@ export function SticksTab() {
       x_sens: left.x_sensitivity,
       y_sens: left.y_sensitivity,
       overlap: left.overlap_percent,
-      mouse_dpi: left.mouse_x_dpi,
-      mouse_ydpi: left.mouse_y_dpi,
+      mouse_dpi: left.mouse_dpi,
       square: left.is_circle === false,
       deadzone_min: left.deadzone_min,
       antideadzone_min: left.antideadzone_min,
@@ -52,8 +51,7 @@ export function SticksTab() {
       x_sens: right.x_sensitivity,
       y_sens: right.y_sensitivity,
       overlap: right.overlap_percent,
-      mouse_dpi: right.mouse_x_dpi,
-      mouse_ydpi: right.mouse_y_dpi,
+      mouse_dpi: right.mouse_dpi,
       square: right.is_circle === false,
       deadzone_min: right.deadzone_min,
       antideadzone_min: right.antideadzone_min,
@@ -136,18 +134,11 @@ function StickSection({
           </div>
           <div className="card-row">
             <RangeSlider
-              label="Mouse X DPI"
-              value={(s.mouse_x_dpi as number) ?? 50}
+              label="Mouse DPI"
+              value={(s.mouse_dpi as number) ?? 50}
               min={0}
               max={100}
-              onChange={(v) => set({ mouse_x_dpi: v })}
-            />
-            <RangeSlider
-              label="Mouse Y DPI"
-              value={(s.mouse_y_dpi as number) ?? 50}
-              min={0}
-              max={100}
-              onChange={(v) => set({ mouse_y_dpi: v })}
+              onChange={(v) => set({ mouse_dpi: v })}
             />
           </div>
           <RangeSlider

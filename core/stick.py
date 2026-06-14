@@ -44,8 +44,7 @@ class StickConfig:
     x_sensitivity: int = 50
     y_sensitivity: int = 50
     overlap_percent: int = 50
-    mouse_x_dpi: int = 50
-    mouse_y_dpi: int = 50
+    mouse_dpi: int = 50
     is_circle: bool = True
     deadzone_min: int = 5
     antideadzone_min: int = 0
@@ -61,8 +60,7 @@ class StickConfig:
         self.x_sensitivity = max(0, min(100, self.x_sensitivity))
         self.y_sensitivity = max(0, min(100, self.y_sensitivity))
         self.overlap_percent = max(0, min(100, self.overlap_percent))
-        self.mouse_x_dpi = max(0, min(100, self.mouse_x_dpi))
-        self.mouse_y_dpi = max(0, min(100, self.mouse_y_dpi))
+        self.mouse_dpi = max(0, min(100, self.mouse_dpi))
         self.is_circle = bool(self.is_circle)
         self.deadzone_min = max(0, min(100, self.deadzone_min))
         self.antideadzone_min = max(0, min(100, self.antideadzone_min))
@@ -96,8 +94,8 @@ def build_targeting_packet(config: StickConfig) -> bytes:
     packet[8:10] = [0x00, 0x00]
     packet[10] = STICK_MODES.get(config.mode, 0x00)
     packet[11] = 0x01
-    packet[12] = config.mouse_x_dpi if config.mode == "mouse" else 0x00
-    packet[13] = config.mouse_y_dpi if config.mode == "mouse" else 0x00
+    packet[12] = config.mouse_dpi if config.mode == "mouse" else 0x00
+    packet[13] = 0x00
     return bytes(packet)
 
 

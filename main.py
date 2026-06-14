@@ -146,8 +146,7 @@ def cmd_stick(args):
         x_sensitivity=args.x_sens,
         y_sensitivity=args.y_sens,
         overlap_percent=args.overlap,
-        mouse_x_dpi=args.mouse_dpi,
-        mouse_y_dpi=args.mouse_ydpi,
+        mouse_dpi=args.mouse_dpi,
         is_circle=not args.square,
         deadzone_min=args.deadzone_min,
         antideadzone_min=args.antideadzone_min,
@@ -446,7 +445,6 @@ def main():
     p.add_argument("--y-sens", type=int, default=50)
     p.add_argument("--overlap", type=int, default=50)
     p.add_argument("--mouse-dpi", type=int, default=50)
-    p.add_argument("--mouse-ydpi", type=int, default=50)
     p.add_argument("--square", action="store_true")
     p.add_argument("--deadzone-min", type=int, default=5)
     p.add_argument("--antideadzone-min", type=int, default=0)
