@@ -14,7 +14,7 @@ from .stick import CURVE_PRESETS
 GYRO_OUTPUT_MODES = {"left_stick": 0x01, "right_stick": 0x02, "keyboard": 0x03, "mouse": 0x04}
 GYRO_MOTION_MODES = {"aim": 0x00, "tilt": 0x01}
 GYRO_METHODS = {"off": 0x00, "press": 0x01, "hold": 0x02, "always": 0x03}
-GYRO_AXIS_MODES = {"global": 0x00, "yaw": 0x01, "roll": 0x02}
+GYRO_AXIS_MODES = {"global": 0x02, "yaw": 0x00, "roll": 0x01}
 GYRO_KB_ZONES = {"left": 0x20, "right": 0x21, "up": 0x22, "down": 0x23}
 
 

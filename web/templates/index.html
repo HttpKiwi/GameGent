@@ -1,0 +1,840 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GameGent - GameSir Tarantula Pro Configuration</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>GameGent</h1>
+            <p>GameSir Tarantula Pro Configuration</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="dashboard">Dashboard</button>
+            <button class="tab-btn" data-tab="lighting">Lighting</button>
+            <button class="tab-btn" data-tab="face-leds">Face LEDs</button>
+            <button class="tab-btn" data-tab="triggers">Triggers</button>
+            <button class="tab-btn" data-tab="sticks">Sticks</button>
+            <button class="tab-btn" data-tab="gyro">Gyro</button>
+            <button class="tab-btn" data-tab="remapping">Remapping</button>
+            <button class="tab-btn" data-tab="turbo">Turbo</button>
+            <button class="tab-btn" data-tab="rumble">Rumble</button>
+            <button class="tab-btn" data-tab="combos">Combos</button>
+            <button class="tab-btn" data-tab="macros">Macros</button>
+        </nav>
+
+        <main class="tab-content">
+            <!-- Dashboard Tab -->
+            <div id="dashboard" class="tab-pane active">
+                <h2>Dashboard</h2>
+                <div class="dashboard-grid">
+                    <div class="quick-setting">
+                        <h3>Lighting Mode</h3>
+                        <select id="dash-lighting-mode">
+                            <option value="off">Off</option>
+                            <option value="static">Static</option>
+                            <option value="breathing">Breathing</option>
+                            <option value="colorful">Colorful</option>
+                            <option value="rainbow">Rainbow</option>
+                            <option value="radar">Radar</option>
+                        </select>
+                    </div>
+                    <div class="quick-setting">
+                        <h3>Brightness</h3>
+                        <input type="range" id="dash-brightness" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="quick-setting">
+                        <h3>ABXY Layout</h3>
+                        <select id="dash-layout">
+                            <option value="xbox">Xbox</option>
+                            <option value="switch">Switch</option>
+                        </select>
+                    </div>
+                    <div class="quick-setting">
+                        <h3>Left Stick Mode</h3>
+                        <select id="dash-left-stick-mode">
+                            <option value="native">Native</option>
+                            <option value="mouse">Mouse</option>
+                            <option value="keyboard">Keyboard</option>
+                            <option value="clone">Clone</option>
+                        </select>
+                    </div>
+                    <div class="quick-setting">
+                        <h3>Right Stick Mode</h3>
+                        <select id="dash-right-stick-mode">
+                            <option value="native">Native</option>
+                            <option value="mouse">Mouse</option>
+                            <option value="keyboard">Keyboard</option>
+                            <option value="clone">Clone</option>
+                        </select>
+                    </div>
+                    <div class="quick-setting">
+                        <h3>Gyro Output</h3>
+                        <select id="dash-gyro-mode">
+                            <option value="mouse">Mouse</option>
+                            <option value="left_stick">Left Stick</option>
+                            <option value="right_stick">Right Stick</option>
+                            <option value="keyboard">Keyboard</option>
+                        </select>
+                    </div>
+                </div>
+                <button class="save-btn" onclick="saveDashboard()">Apply Quick Settings</button>
+            </div>
+
+            <!-- Lighting Tab -->
+            <div id="lighting" class="tab-pane">
+                <h2>Lighting</h2>
+                <div class="setting-group">
+                    <label>Lighting Mode</label>
+                    <select id="lighting-mode">
+                        <option value="off">Off</option>
+                        <option value="static">Static</option>
+                        <option value="breathing">Breathing</option>
+                        <option value="colorful">Colorful</option>
+                        <option value="rainbow">Rainbow</option>
+                        <option value="radar">Radar</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Brightness</label>
+                    <input type="range" id="lighting-brightness" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Speed</label>
+                    <input type="range" id="lighting-speed" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Target LED</label>
+                    <select id="lighting-led-target">
+                        <option value="panel">Panel</option>
+                        <option value="home">Home</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Hue</label>
+                    <div class="color-wheel-container">
+                        <canvas id="lighting-color-wheel" width="200" height="200"></canvas>
+                        <div class="color-preview" id="lighting-color-preview"></div>
+                    </div>
+                    <input type="range" id="lighting-hue" min="0" max="360" value="0">
+                    <span class="value-display">0°</span>
+                </div>
+                <div class="setting-group">
+                    <label>Saturation</label>
+                    <input type="range" id="lighting-saturation" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Lightness</label>
+                    <input type="range" id="lighting-lightness" min="0" max="100" value="50">
+                    <span class="value-display">50%</span>
+                </div>
+                <button class="save-btn" onclick="saveLighting()">Apply Lighting</button>
+            </div>
+
+            <!-- Face LEDs Tab -->
+            <div id="face-leds" class="tab-pane">
+                <h2>Face Button LEDs</h2>
+                <div class="face-leds-grid">
+                    <div class="face-led-setting">
+                        <h3>A Button</h3>
+                        <div class="color-wheel-container">
+                            <canvas class="face-color-wheel" data-button="a" width="150" height="150"></canvas>
+                            <div class="color-preview" id="face-a-preview"></div>
+                        </div>
+                        <input type="range" class="face-hue" data-button="a" min="0" max="360" value="0">
+                        <input type="range" class="face-sat" data-button="a" min="0" max="100" value="100">
+                        <input type="range" class="face-light" data-button="a" min="0" max="100" value="50">
+                    </div>
+                    <div class="face-led-setting">
+                        <h3>B Button</h3>
+                        <div class="color-wheel-container">
+                            <canvas class="face-color-wheel" data-button="b" width="150" height="150"></canvas>
+                            <div class="color-preview" id="face-b-preview"></div>
+                        </div>
+                        <input type="range" class="face-hue" data-button="b" min="0" max="360" value="0">
+                        <input type="range" class="face-sat" data-button="b" min="0" max="100" value="100">
+                        <input type="range" class="face-light" data-button="b" min="0" max="100" value="50">
+                    </div>
+                    <div class="face-led-setting">
+                        <h3>X Button</h3>
+                        <div class="color-wheel-container">
+                            <canvas class="face-color-wheel" data-button="x" width="150" height="150"></canvas>
+                            <div class="color-preview" id="face-x-preview"></div>
+                        </div>
+                        <input type="range" class="face-hue" data-button="x" min="0" max="360" value="0">
+                        <input type="range" class="face-sat" data-button="x" min="0" max="100" value="100">
+                        <input type="range" class="face-light" data-button="x" min="0" max="100" value="50">
+                    </div>
+                    <div class="face-led-setting">
+                        <h3>Y Button</h3>
+                        <div class="color-wheel-container">
+                            <canvas class="face-color-wheel" data-button="y" width="150" height="150"></canvas>
+                            <div class="color-preview" id="face-y-preview"></div>
+                        </div>
+                        <input type="range" class="face-hue" data-button="y" min="0" max="360" value="0">
+                        <input type="range" class="face-sat" data-button="y" min="0" max="100" value="100">
+                        <input type="range" class="face-light" data-button="y" min="0" max="100" value="50">
+                    </div>
+                    <div class="face-led-setting">
+                        <h3>Home Button</h3>
+                        <div class="color-wheel-container">
+                            <canvas class="face-color-wheel" data-button="home" width="150" height="150"></canvas>
+                            <div class="color-preview" id="face-home-preview"></div>
+                        </div>
+                        <input type="range" class="face-hue" data-button="home" min="0" max="360" value="0">
+                        <input type="range" class="face-sat" data-button="home" min="0" max="100" value="100">
+                        <input type="range" class="face-light" data-button="home" min="0" max="100" value="50">
+                    </div>
+                </div>
+                <button class="save-btn" onclick="saveFaceLEDs()">Apply Face LEDs</button>
+            </div>
+
+            <!-- Triggers Tab -->
+            <div id="triggers" class="tab-pane">
+                <h2>Triggers</h2>
+                <div class="trigger-section">
+                    <h3>Left Trigger</h3>
+                    <div class="setting-group">
+                        <label>Hair Trigger Mode</label>
+                        <select id="left-hair-mode">
+                            <option value="off">Off</option>
+                            <option value="adaptive">Adaptive</option>
+                            <option value="fixed">Fixed</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Hair Trigger Begin</label>
+                        <input type="range" id="left-hair-begin" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Hair Trigger End</label>
+                        <input type="range" id="left-hair-end" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone Begin</label>
+                        <input type="range" id="left-dz-begin" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone End</label>
+                        <input type="range" id="left-dz-end" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone Begin</label>
+                        <input type="range" id="left-anti-begin" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone End</label>
+                        <input type="range" id="left-anti-end" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Preset</label>
+                        <select id="left-curve">
+                            <option value="linear">Linear</option>
+                            <option value="expo">Expo</option>
+                            <option value="s-curve">S-Curve</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Intensity</label>
+                        <input type="range" id="left-curve-intensity" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                </div>
+                <div class="trigger-section">
+                    <h3>Right Trigger</h3>
+                    <div class="setting-group">
+                        <label>Hair Trigger Mode</label>
+                        <select id="right-hair-mode">
+                            <option value="off">Off</option>
+                            <option value="adaptive">Adaptive</option>
+                            <option value="fixed">Fixed</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Hair Trigger Begin</label>
+                        <input type="range" id="right-hair-begin" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Hair Trigger End</label>
+                        <input type="range" id="right-hair-end" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone Begin</label>
+                        <input type="range" id="right-dz-begin" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone End</label>
+                        <input type="range" id="right-dz-end" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone Begin</label>
+                        <input type="range" id="right-anti-begin" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone End</label>
+                        <input type="range" id="right-anti-end" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Preset</label>
+                        <select id="right-curve">
+                            <option value="linear">Linear</option>
+                            <option value="expo">Expo</option>
+                            <option value="s-curve">S-Curve</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Intensity</label>
+                        <input type="range" id="right-curve-intensity" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                </div>
+                <button class="save-btn" onclick="saveTriggers()">Apply Triggers</button>
+            </div>
+
+            <!-- Sticks Tab -->
+            <div id="sticks" class="tab-pane">
+                <h2>Sticks</h2>
+                <div class="stick-section">
+                    <h3>Left Stick</h3>
+                    <div class="setting-group">
+                        <label>Mode</label>
+                        <select id="left-stick-mode">
+                            <option value="native">Native</option>
+                            <option value="mouse">Mouse</option>
+                            <option value="keyboard">Keyboard</option>
+                            <option value="clone">Clone</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>X Sensitivity</label>
+                        <input type="range" id="left-x-sens" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Y Sensitivity</label>
+                        <input type="range" id="left-y-sens" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Overlap</label>
+                        <input type="range" id="left-overlap" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Mouse X DPI</label>
+                        <input type="range" id="left-mouse-dpi" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Mouse Y DPI</label>
+                        <input type="range" id="left-mouse-ydpi" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Shape</label>
+                        <select id="left-shape">
+                            <option value="circle">Circle</option>
+                            <option value="square">Square</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone Min</label>
+                        <input type="range" id="left-deadzone-min" min="0" max="100" value="5">
+                        <span class="value-display">5%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone Min</label>
+                        <input type="range" id="left-antideadzone-min" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone Max</label>
+                        <input type="range" id="left-deadzone-max" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone Max</label>
+                        <input type="range" id="left-antideadzone-max" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Preset</label>
+                        <select id="left-stick-curve">
+                            <option value="linear">Linear</option>
+                            <option value="expo">Expo</option>
+                            <option value="s-curve">S-Curve</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Intensity</label>
+                        <input type="range" id="left-stick-curve-intensity" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                </div>
+                <div class="stick-section">
+                    <h3>Right Stick</h3>
+                    <div class="setting-group">
+                        <label>Mode</label>
+                        <select id="right-stick-mode">
+                            <option value="native">Native</option>
+                            <option value="mouse">Mouse</option>
+                            <option value="keyboard">Keyboard</option>
+                            <option value="clone">Clone</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>X Sensitivity</label>
+                        <input type="range" id="right-x-sens" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Y Sensitivity</label>
+                        <input type="range" id="right-y-sens" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Overlap</label>
+                        <input type="range" id="right-overlap" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Mouse X DPI</label>
+                        <input type="range" id="right-mouse-dpi" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Mouse Y DPI</label>
+                        <input type="range" id="right-mouse-ydpi" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Shape</label>
+                        <select id="right-shape">
+                            <option value="circle">Circle</option>
+                            <option value="square">Square</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone Min</label>
+                        <input type="range" id="right-deadzone-min" min="0" max="100" value="5">
+                        <span class="value-display">5%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone Min</label>
+                        <input type="range" id="right-antideadzone-min" min="0" max="100" value="0">
+                        <span class="value-display">0%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Deadzone Max</label>
+                        <input type="range" id="right-deadzone-max" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Anti-Deadzone Max</label>
+                        <input type="range" id="right-antideadzone-max" min="0" max="100" value="100">
+                        <span class="value-display">100%</span>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Preset</label>
+                        <select id="right-stick-curve">
+                            <option value="linear">Linear</option>
+                            <option value="expo">Expo</option>
+                            <option value="s-curve">S-Curve</option>
+                        </select>
+                    </div>
+                    <div class="setting-group">
+                        <label>Curve Intensity</label>
+                        <input type="range" id="right-stick-curve-intensity" min="0" max="100" value="50">
+                        <span class="value-display">50%</span>
+                    </div>
+                </div>
+                <button class="save-btn" onclick="saveSticks()">Apply Sticks</button>
+            </div>
+
+            <!-- Gyro Tab -->
+            <div id="gyro" class="tab-pane">
+                <h2>Gyro / Motion Aim</h2>
+                <div class="setting-group">
+                    <label>Output Mode</label>
+                    <select id="gyro-output-mode">
+                        <option value="mouse">Mouse</option>
+                        <option value="left_stick">Left Stick</option>
+                        <option value="right_stick">Right Stick</option>
+                        <option value="keyboard">Keyboard</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Motion Mode</label>
+                    <select id="gyro-motion-mode">
+                        <option value="aim">Aim</option>
+                        <option value="tilt">Tilt</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Activation Method</label>
+                    <select id="gyro-method">
+                        <option value="off">Off</option>
+                        <option value="hold">Hold</option>
+                        <option value="press">Press</option>
+                        <option value="always">Always</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Axis Mode</label>
+                    <select id="gyro-axis">
+                        <option value="global">Global</option>
+                        <option value="yaw">Yaw</option>
+                        <option value="roll">Roll</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Activate Button</label>
+                    <select id="gyro-button">
+                        <option value="c1">C1</option>
+                        <option value="c2">C2</option>
+                        <option value="c3">C3</option>
+                        <option value="c4">C4</option>
+                        <option value="t1">T1</option>
+                        <option value="t2">T2</option>
+                        <option value="t3">T3</option>
+                        <option value="l4">L4</option>
+                        <option value="r4">R4</option>
+                        <option value="a">A</option>
+                        <option value="b">B</option>
+                        <option value="x">X</option>
+                        <option value="y">Y</option>
+                        <option value="lb">LB</option>
+                        <option value="lt">LT</option>
+                        <option value="rb">RB</option>
+                        <option value="rt">RT</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>X Sensitivity</label>
+                    <input type="range" id="gyro-x-sens" min="0" max="100" value="50">
+                    <span class="value-display">50%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Y Sensitivity</label>
+                    <input type="range" id="gyro-y-sens" min="0" max="100" value="50">
+                    <span class="value-display">50%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Overlap</label>
+                    <input type="range" id="gyro-overlap" min="0" max="100" value="50">
+                    <span class="value-display">50%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Deadzone Min</label>
+                    <input type="range" id="gyro-deadzone-min" min="0" max="100" value="0">
+                    <span class="value-display">0%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Deadzone Max</label>
+                    <input type="range" id="gyro-deadzone-max" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Anti-Deadzone Min</label>
+                    <input type="range" id="gyro-antideadzone-min" min="0" max="100" value="0">
+                    <span class="value-display">0%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Anti-Deadzone Max</label>
+                    <input type="range" id="gyro-antideadzone-max" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Invert X</label>
+                    <input type="checkbox" id="gyro-invert-x">
+                </div>
+                <div class="setting-group">
+                    <label>Invert Y</label>
+                    <input type="checkbox" id="gyro-invert-y">
+                </div>
+                <div class="setting-group">
+                    <label>Curve Preset</label>
+                    <select id="gyro-curve">
+                        <option value="linear">Linear</option>
+                        <option value="expo">Expo</option>
+                        <option value="s-curve">S-Curve</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Curve Intensity</label>
+                    <input type="range" id="gyro-curve-intensity" min="0" max="100" value="50">
+                    <span class="value-display">50%</span>
+                </div>
+                <div class="keyboard-targets">
+                    <h3>Keyboard Targets</h3>
+                    <div class="setting-group">
+                        <label>Up</label>
+                        <input type="text" id="gyro-kb-up" value="key:w">
+                    </div>
+                    <div class="setting-group">
+                        <label>Down</label>
+                        <input type="text" id="gyro-kb-down" value="key:s">
+                    </div>
+                    <div class="setting-group">
+                        <label>Left</label>
+                        <input type="text" id="gyro-kb-left" value="key:a">
+                    </div>
+                    <div class="setting-group">
+                        <label>Right</label>
+                        <input type="text" id="gyro-kb-right" value="key:d">
+                    </div>
+                </div>
+                <button class="save-btn" onclick="saveGyro()">Apply Gyro</button>
+            </div>
+
+            <!-- Remapping Tab -->
+            <div id="remapping" class="tab-pane">
+                <h2>Button Remapping</h2>
+                <div class="remapping-container">
+                    <div class="controller-svg-container">
+                        <img src="/static/svg/controller.svg" alt="Controller" id="controller-svg">
+                    </div>
+                    <div class="remapping-controls">
+                        <div class="setting-group">
+                            <label>Source Button</label>
+                            <select id="remap-source">
+                                <option value="l4">L4</option>
+                                <option value="r4">R4</option>
+                                <option value="t1">T1</option>
+                                <option value="t2">T2</option>
+                                <option value="t3">T3</option>
+                                <option value="c1">C1</option>
+                                <option value="c2">C2</option>
+                                <option value="c3">C3</option>
+                                <option value="c4">C4</option>
+                                <option value="a">A</option>
+                                <option value="b">B</option>
+                                <option value="x">X</option>
+                                <option value="y">Y</option>
+                                <option value="lb">LB</option>
+                                <option value="rb">RB</option>
+                                <option value="lt">LT</option>
+                                <option value="rt">RT</option>
+                                <option value="l3">L3</option>
+                                <option value="r3">R3</option>
+                                <option value="back">Back</option>
+                                <option value="start">Start</option>
+                                <option value="dpad_up">DPad Up</option>
+                                <option value="dpad_down">DPad Down</option>
+                                <option value="dpad_left">DPad Left</option>
+                                <option value="dpad_right">DPad Right</option>
+                                <option value="screenshot">Screenshot</option>
+                            </select>
+                        </div>
+                        <div class="setting-group">
+                            <label>Target</label>
+                            <input type="text" id="remap-target" placeholder="e.g., key:enter, controller:a, mouse:left_click">
+                        </div>
+                        <button class="save-btn" onclick="applyRemap()">Apply Remap</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Turbo Tab -->
+            <div id="turbo" class="tab-pane">
+                <h2>Turbo</h2>
+                <div class="setting-group">
+                    <label>Button</label>
+                    <select id="turbo-button">
+                        <option value="l4">L4</option>
+                        <option value="r4">R4</option>
+                        <option value="t1">T1</option>
+                        <option value="t2">T2</option>
+                        <option value="t3">T3</option>
+                        <option value="c1">C1</option>
+                        <option value="c2">C2</option>
+                        <option value="c3">C3</option>
+                        <option value="c4">C4</option>
+                        <option value="a">A</option>
+                        <option value="b">B</option>
+                        <option value="x">X</option>
+                        <option value="y">Y</option>
+                        <option value="lb">LB</option>
+                        <option value="rb">RB</option>
+                        <option value="lt">LT</option>
+                        <option value="rt">RT</option>
+                        <option value="l3">L3</option>
+                        <option value="r3">R3</option>
+                        <option value="back">Back</option>
+                        <option value="start">Start</option>
+                        <option value="dpad_up">DPad Up</option>
+                        <option value="dpad_down">DPad Down</option>
+                        <option value="dpad_left">DPad Left</option>
+                        <option value="dpad_right">DPad Right</option>
+                        <option value="screenshot">Screenshot</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Target</label>
+                    <input type="text" id="turbo-target" placeholder="e.g., key:enter, controller:a">
+                </div>
+                <div class="setting-group">
+                    <label>Turbo Rate (Hz)</label>
+                    <input type="number" id="turbo-rate" min="1" max="100" value="10">
+                </div>
+                <div class="setting-group">
+                    <label>Continuous</label>
+                    <input type="checkbox" id="turbo-continuous">
+                </div>
+                <button class="save-btn" onclick="saveTurbo()">Apply Turbo</button>
+            </div>
+
+            <!-- Rumble Tab -->
+            <div id="rumble" class="tab-pane">
+                <h2>Rumble</h2>
+                <div class="setting-group">
+                    <label>Left Rumble Level</label>
+                    <input type="range" id="rumble-left" min="0" max="100" value="0">
+                    <span class="value-display">0%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Right Rumble Level</label>
+                    <input type="range" id="rumble-right" min="0" max="100" value="0">
+                    <span class="value-display">0%</span>
+                </div>
+                <button class="save-btn" onclick="saveRumble()">Set Rumble Level</button>
+                <hr>
+                <h3>Fire Rumble</h3>
+                <div class="setting-group">
+                    <label>Left Fire Level</label>
+                    <input type="range" id="rumble-fire-left" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Right Fire Level</label>
+                    <input type="range" id="rumble-fire-right" min="0" max="100" value="100">
+                    <span class="value-display">100%</span>
+                </div>
+                <div class="setting-group">
+                    <label>Duration (ms)</label>
+                    <input type="number" id="rumble-duration" min="100" max="5000" value="500">
+                </div>
+                <button class="save-btn" onclick="fireRumble()">Fire Rumble</button>
+            </div>
+
+            <!-- Combos Tab -->
+            <div id="combos" class="tab-pane">
+                <h2>Combos</h2>
+                <div class="setting-group">
+                    <label>Source Button</label>
+                    <select id="combo-button">
+                        <option value="l4">L4</option>
+                        <option value="r4">R4</option>
+                        <option value="t1">T1</option>
+                        <option value="t2">T2</option>
+                        <option value="t3">T3</option>
+                        <option value="c1">C1</option>
+                        <option value="c2">C2</option>
+                        <option value="c3">C3</option>
+                        <option value="c4">C4</option>
+                        <option value="a">A</option>
+                        <option value="b">B</option>
+                        <option value="x">X</option>
+                        <option value="y">Y</option>
+                        <option value="lb">LB</option>
+                        <option value="rb">RB</option>
+                        <option value="lt">LT</option>
+                        <option value="rt">RT</option>
+                        <option value="l3">L3</option>
+                        <option value="r3">R3</option>
+                        <option value="back">Back</option>
+                        <option value="start">Start</option>
+                        <option value="dpad_up">DPad Up</option>
+                        <option value="dpad_down">DPad Down</option>
+                        <option value="dpad_left">DPad Left</option>
+                        <option value="dpad_right">DPad Right</option>
+                        <option value="screenshot">Screenshot</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Combo Keys (2 or 3)</label>
+                    <input type="text" id="combo-keys" placeholder="e.g., controller:x controller:y">
+                </div>
+                <button class="save-btn" onclick="saveCombo()">Apply Combo</button>
+            </div>
+
+            <!-- Macros Tab -->
+            <div id="macros" class="tab-pane">
+                <h2>Macros</h2>
+                <div class="setting-group">
+                    <label>Source Button</label>
+                    <select id="macro-button">
+                        <option value="l4">L4</option>
+                        <option value="r4">R4</option>
+                        <option value="t1">T1</option>
+                        <option value="t2">T2</option>
+                        <option value="t3">T3</option>
+                        <option value="c1">C1</option>
+                        <option value="c2">C2</option>
+                        <option value="c3">C3</option>
+                        <option value="c4">C4</option>
+                        <option value="a">A</option>
+                        <option value="b">B</option>
+                        <option value="x">X</option>
+                        <option value="y">Y</option>
+                        <option value="lb">LB</option>
+                        <option value="rb">RB</option>
+                        <option value="lt">LT</option>
+                        <option value="rt">RT</option>
+                        <option value="l3">L3</option>
+                        <option value="r3">R3</option>
+                        <option value="back">Back</option>
+                        <option value="start">Start</option>
+                        <option value="dpad_up">DPad Up</option>
+                        <option value="dpad_down">DPad Down</option>
+                        <option value="dpad_left">DPad Left</option>
+                        <option value="dpad_right">DPad Right</option>
+                        <option value="screenshot">Screenshot</option>
+                    </select>
+                </div>
+                <div class="setting-group">
+                    <label>Macro Steps (btn:press_ms:release_ms)</label>
+                    <textarea id="macro-steps" rows="5" placeholder="e.g., lb:0:50 rb:100:110"></textarea>
+                </div>
+                <div class="setting-group">
+                    <label>Hold to Fire</label>
+                    <input type="checkbox" id="macro-hold">
+                </div>
+                <div class="setting-group">
+                    <label>Loop</label>
+                    <input type="checkbox" id="macro-loop">
+                </div>
+                <button class="save-btn" onclick="saveMacro()">Apply Macro</button>
+            </div>
+        </main>
+
+        <footer>
+            <button class="global-save-btn" onclick="saveAllConfig()">Save All Configuration</button>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+    <script src="/static/js/color-wheel.js"></script>
+    <script src="/static/js/controller.js"></script>
+</body>
+</html>
