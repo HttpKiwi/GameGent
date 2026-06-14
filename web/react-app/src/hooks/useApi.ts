@@ -13,7 +13,6 @@ export function useConfig() {
       setConfigFromServer(config);
       return config;
     },
-    refetchInterval: 2000,
   });
 }
 

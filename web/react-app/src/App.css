@@ -114,6 +114,7 @@ header p {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 16px;
+  transition: all 0.3s ease;
 }
 
 .setting-card {
@@ -121,7 +122,27 @@ header p {
   border: 1px solid var(--border-subtle);
   border-radius: 10px;
   padding: 18px 20px;
-  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease, opacity 0.3s ease, transform 0.3s ease;
+}
+
+.setting-card[style*="display: none"] {
+  opacity: 0;
+  transform: scale(0.98);
+}
+
+.setting-card.visible {
+  animation: cardAppear 0.3s ease forwards;
+}
+
+@keyframes cardAppear {
+  from {
+    opacity: 0;
+    transform: scale(0.98) translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
 }
 
 .setting-card:hover {
@@ -155,6 +176,7 @@ header p {
   display: grid;
   grid-template-columns: 1fr 1fr;
   gap: 12px;
+  transition: opacity 0.3s ease;
 }
 
 /* ===== FORM ELEMENTS ===== */
@@ -236,6 +258,11 @@ header p {
   height: 20px;
   accent-color: var(--accent);
   cursor: pointer;
+}
+
+.setting-group.disabled {
+  opacity: 0.5;
+  pointer-events: none;
 }
 
 .value-display {
@@ -426,6 +453,13 @@ footer {
   background: var(--bg-primary);
   border-radius: 6px;
   border: 1px solid var(--border);
+  transition: all 0.2s ease;
+  cursor: pointer;
+}
+
+.mapping-row:hover {
+  background: var(--bg-secondary);
+  border-color: var(--accent);
 }
 
 .mapping-source {
@@ -470,6 +504,59 @@ footer {
   background: #e53e3e;
   color: #fff;
   border-color: #e53e3e;
+}
+
+.mapping-row.active {
+  border-color: var(--accent);
+  background: var(--bg-secondary);
+}
+
+.mapping-turbo {
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  background: var(--bg-tertiary);
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: auto;
+}
+
+.form-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  padding: 10px 24px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  transition: background 0.15s, opacity 0.15s;
+  flex: 1;
+}
+
+.form-btn:hover:not(:disabled) {
+  background: var(--accent-hover);
+}
+
+.form-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.form-btn-danger {
+  background: transparent;
+  border: 1px solid #e53e3e;
+  color: #e53e3e;
+}
+
+.form-btn-danger:hover:not(:disabled) {
+  background: #e53e3e;
+  color: #fff;
+}
+
+.button-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
 }
 
 /* ===== RESPONSIVE ===== */

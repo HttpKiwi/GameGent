@@ -204,7 +204,9 @@ def set_stick_endpoint():
             # Dual stick configuration
             left_data = data['left']
             right_data = data['right']
-            
+            print(f"[DEBUG] /api/stick left: {left_data}")
+            print(f"[DEBUG] /api/stick right: {right_data}")
+
             left_cfg = StickConfig(
                 stick_id=0,
                 mode=left_data.get('mode', 'native'),

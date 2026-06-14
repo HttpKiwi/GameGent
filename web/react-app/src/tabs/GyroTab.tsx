@@ -208,30 +208,32 @@ export function GyroTab() {
           />
         </SettingCard>
 
-        <SettingCard title="Keyboard Targets" span={2}>
-          <div className="keyboard-targets">
-            <TextField
-              label="Up"
-              value={(g.kb_up as string) ?? 'key:w'}
-              onChange={(v) => set({ kb_up: v })}
-            />
-            <TextField
-              label="Down"
-              value={(g.kb_down as string) ?? 'key:s'}
-              onChange={(v) => set({ kb_down: v })}
-            />
-            <TextField
-              label="Left"
-              value={(g.kb_left as string) ?? 'key:a'}
-              onChange={(v) => set({ kb_left: v })}
-            />
-            <TextField
-              label="Right"
-              value={(g.kb_right as string) ?? 'key:d'}
-              onChange={(v) => set({ kb_right: v })}
-            />
-          </div>
-        </SettingCard>
+        {(g.output_mode as string) === 'keyboard' && (
+          <SettingCard title="Keyboard Targets" span={2}>
+            <div className="keyboard-targets">
+              <TextField
+                label="Up"
+                value={(g.kb_up as string) ?? 'key:w'}
+                onChange={(v) => set({ kb_up: v })}
+              />
+              <TextField
+                label="Down"
+                value={(g.kb_down as string) ?? 'key:s'}
+                onChange={(v) => set({ kb_down: v })}
+              />
+              <TextField
+                label="Left"
+                value={(g.kb_left as string) ?? 'key:a'}
+                onChange={(v) => set({ kb_left: v })}
+              />
+              <TextField
+                label="Right"
+                value={(g.kb_right as string) ?? 'key:d'}
+                onChange={(v) => set({ kb_right: v })}
+              />
+            </div>
+          </SettingCard>
+        )}
       </div>
       <button className="save-btn" onClick={handleApply}>
         Apply Gyro

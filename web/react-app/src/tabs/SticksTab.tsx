@@ -5,7 +5,7 @@ import { SelectField, RangeSlider, SettingCard } from '../components/ui';
 const STICK_MODES = [
   { value: 'native', label: 'Native' },
   { value: 'mouse', label: 'Mouse' },
-  { value: 'keyboard', label: 'Keyboard' },
+  { value: 'wheel', label: 'Wheel' },
   { value: 'clone', label: 'Clone' },
 ];
 
@@ -22,6 +22,12 @@ const CURVE_OPTIONS = [
 
 type Side = 'left' | 'right';
 
+function getSensitivity(stick: Record<string, unknown>): number {
+  if (stick.sensitivity !== undefined) return stick.sensitivity as number;
+  if (stick.y_sensitivity !== undefined) return stick.y_sensitivity as number;
+  return 50;
+}
+
 export function SticksTab() {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
@@ -32,10 +38,13 @@ export function SticksTab() {
     const left = config.stick_left ?? {};
     const right = config.stick_right ?? {};
 
+    const leftSens = getSensitivity(left);
+    const rightSens = getSensitivity(right);
+
     const leftData = {
       mode: left.mode,
-      x_sens: left.x_sensitivity,
-      y_sens: left.y_sensitivity,
+      x_sens: leftSens,
+      y_sens: 100 - leftSens,
       overlap: left.overlap_percent,
       mouse_dpi: left.mouse_dpi,
       square: left.is_circle === false,
@@ -48,8 +57,8 @@ export function SticksTab() {
     };
     const rightData = {
       mode: right.mode,
-      x_sens: right.x_sensitivity,
-      y_sens: right.y_sensitivity,
+      x_sens: rightSens,
+      y_sens: 100 - rightSens,
       overlap: right.overlap_percent,
       mouse_dpi: right.mouse_dpi,
       square: right.is_circle === false,
@@ -115,24 +124,29 @@ function StickSection({
           />
         </SettingCard>
 
-        <SettingCard title="Sensitivity" span={2}>
-          <div className="card-row">
+        {(s.mode as string) !== 'mouse' && (
+          <SettingCard title="Sensitivity" span={2}>
             <RangeSlider
-              label="X Sensitivity"
-              value={(s.x_sensitivity as number) ?? 50}
+              label="Sensitivity"
+              value={getSensitivity(s)}
               min={0}
               max={100}
-              onChange={(v) => set({ x_sensitivity: v })}
+              onChange={(v) => set({ sensitivity: v })}
             />
-            <RangeSlider
-              label="Y Sensitivity"
-              value={(s.y_sensitivity as number) ?? 50}
-              min={0}
-              max={100}
-              onChange={(v) => set({ y_sensitivity: v })}
-            />
-          </div>
-          <div className="card-row">
+            {(s.mode as string) === 'wheel' && (
+              <RangeSlider
+                label="Overlap"
+                value={(s.overlap_percent as number) ?? 50}
+                min={0}
+                max={100}
+                onChange={(v) => set({ overlap_percent: v })}
+              />
+            )}
+          </SettingCard>
+        )}
+
+        {(s.mode as string) === 'mouse' && (
+          <SettingCard title="Mouse DPI" span={2}>
             <RangeSlider
               label="Mouse DPI"
               value={(s.mouse_dpi as number) ?? 50}
@@ -140,16 +154,8 @@ function StickSection({
               max={100}
               onChange={(v) => set({ mouse_dpi: v })}
             />
-          </div>
-          <RangeSlider
-            label="Overlap"
-            value={(s.overlap_percent as number) ?? 50}
-            min={0}
-            max={100}
-            onChange={(v) => set({ overlap_percent: v })}
-          />
-        </SettingCard>
-
+          </SettingCard>
+        )}
         <SettingCard title="Deadzone">
           <div className="card-row">
             <RangeSlider

@@ -6,8 +6,7 @@ import { FaceLEDsTab } from './tabs/FaceLEDsTab';
 import { TriggersTab } from './tabs/TriggersTab';
 import { SticksTab } from './tabs/SticksTab';
 import { GyroTab } from './tabs/GyroTab';
-import { RemappingTab } from './tabs/RemappingTab';
-import { TurboTab } from './tabs/TurboTab';
+import { ButtonsTab } from './tabs/ButtonsTab';
 import { RumbleTab } from './tabs/RumbleTab';
 import { CombosTab } from './tabs/CombosTab';
 import { MacrosTab } from './tabs/MacrosTab';
@@ -25,8 +24,7 @@ const TABS = [
   { id: 'triggers', label: 'Triggers', content: <TriggersTab /> },
   { id: 'sticks', label: 'Sticks', content: <SticksTab /> },
   { id: 'gyro', label: 'Gyro', content: <GyroTab /> },
-  { id: 'remapping', label: 'Remapping', content: <RemappingTab /> },
-  { id: 'turbo', label: 'Turbo', content: <TurboTab /> },
+  { id: 'buttons', label: 'Buttons', content: <ButtonsTab /> },
   { id: 'rumble', label: 'Rumble', content: <RumbleTab /> },
   { id: 'combos', label: 'Combos', content: <CombosTab /> },
   { id: 'macros', label: 'Macros', content: <MacrosTab /> },

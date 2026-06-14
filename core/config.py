@@ -14,11 +14,11 @@ DEFAULT_CONFIG = {
     "inner_deadzone": 0,
     "outer_deadzone": 100,
     "key_mappings": {},
+    "turbo_settings": {},
     "stick_left": {
         "mode": "native",
         "is_circle": True,
-        "x_sensitivity": 50,
-        "y_sensitivity": 50,
+        "sensitivity": 50,
         "overlap_percent": 50,
         "mouse_dpi": 50,
         "deadzone_min": 5,
@@ -36,8 +36,7 @@ DEFAULT_CONFIG = {
     "stick_right": {
         "mode": "native",
         "is_circle": True,
-        "x_sensitivity": 50,
-        "y_sensitivity": 50,
+        "sensitivity": 50,
         "overlap_percent": 50,
         "mouse_dpi": 50,
         "deadzone_min": 5,

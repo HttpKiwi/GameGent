@@ -9,7 +9,7 @@ CURVE_PRESETS = {
     "s-curve": {"coords": [0x0e, 0x1e, 0x2c, 0x32, 0x4a, 0x46], "curve_type": 0x02},
 }
 
-STICK_MODES = {"native": 0x00, "mouse": 0x01, "keyboard": 0x02, "clone": 0x03}
+STICK_MODES = {"native": 0x00, "mouse": 0x01, "wheel": 0x02, "clone": 0x03}
 
 KEYBOARD_ZONE_INDEX = {
     "left": 0x10, "right": 0x11, "up": 0x12, "down": 0x13,
@@ -88,14 +88,15 @@ def build_targeting_packet(config: StickConfig) -> bytes:
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x0f, 0x02, 0x03]
     packet[4] = config.stick_id & 0x01
-    packet[5] = config.overlap_percent if config.mode == "keyboard" else config.x_sensitivity
-    packet[6] = config.y_sensitivity
+    packet[5] = config.overlap_percent if config.mode == "wheel" else config.x_sensitivity
+    packet[6] = 0x28
     packet[7] = 0x50
     packet[8:10] = [0x00, 0x00]
     packet[10] = STICK_MODES.get(config.mode, 0x00)
     packet[11] = 0x01
     packet[12] = config.mouse_dpi if config.mode == "mouse" else 0x00
     packet[13] = 0x00
+    print(f"[DEBUG] build_targeting: mode={config.mode} x_sens={config.x_sensitivity} y_sens={config.y_sensitivity} dpi={config.mouse_dpi}")
     return bytes(packet)
 
 
@@ -107,7 +108,7 @@ def build_geometry_packet(config: StickConfig) -> bytes:
     else:
         packet[4:11] = [0x00] * 7
     packet[11] = 0x01 if config.is_circle else 0x00
-    packet[12] = 0x32
+    packet[12] = config.y_sensitivity
     packet[13] = config.deadzone_min
     packet[14] = config.antideadzone_min
     preset = CURVE_PRESETS.get(config.curve_preset, CURVE_PRESETS["linear"])
@@ -116,6 +117,7 @@ def build_geometry_packet(config: StickConfig) -> bytes:
     packet[22] = config.antideadzone_max
     packet[23] = preset["curve_type"]
     packet[24] = config.curve_intensity
+    print(f"[DEBUG] build_geometry_packet: stick_id={config.stick_id} y_sensitivity={config.y_sensitivity} -> byte12={config.y_sensitivity}")
     return bytes(packet)
 
 

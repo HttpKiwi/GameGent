@@ -143,8 +143,8 @@ def cmd_stick(args):
     cfg = StickConfig(
         stick_id=0 if stick == "left" else 1,
         mode=mode,
-        x_sensitivity=args.x_sens,
-        y_sensitivity=args.y_sens,
+        x_sensitivity=100 - args.sens,
+        y_sensitivity=args.sens,
         overlap_percent=args.overlap,
         mouse_dpi=args.mouse_dpi,
         is_circle=not args.square,
@@ -441,8 +441,7 @@ def main():
     p = sub.add_parser("stick", help="Configure stick")
     p.add_argument("stick", choices=["left", "right"])
     p.add_argument("mode", choices=list(STICK_MODES.keys()))
-    p.add_argument("--x-sens", type=int, default=50)
-    p.add_argument("--y-sens", type=int, default=50)
+    p.add_argument("--sens", type=int, default=50, help="Sensitivity (0=favors X, 100=favors Y)")
     p.add_argument("--overlap", type=int, default=50)
     p.add_argument("--mouse-dpi", type=int, default=50)
     p.add_argument("--square", action="store_true")

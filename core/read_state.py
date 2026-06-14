@@ -131,6 +131,7 @@ def read_state():
             stick["mouse_dpi"] = t[12]
         if g:
             stick["is_circle"] = bool(g[11])
+            stick["y_sensitivity"] = g[12]
             stick["deadzone_min"] = g[13]
             stick["antideadzone_min"] = g[14]
             stick["deadzone_max"] = g[21]
