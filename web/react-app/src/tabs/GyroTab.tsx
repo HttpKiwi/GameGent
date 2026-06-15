@@ -56,6 +56,7 @@ export function GyroTab() {
       x_sens: g.x_sensitivity,
       y_sens: g.y_sensitivity,
       overlap: g.overlap_percent,
+      mouse_dpi: g.mouse_dpi,
       deadzone_min: g.deadzone_min,
       deadzone_max: g.deadzone_max,
       antideadzone_min: g.antideadzone_min,
@@ -232,6 +233,18 @@ export function GyroTab() {
                 onChange={(v) => set({ kb_right: v })}
               />
             </div>
+          </SettingCard>
+        )}
+
+        {(g.output_mode as string) === 'mouse' && (
+          <SettingCard title="Mouse DPI">
+            <RangeSlider
+              label="DPI"
+              value={(g.mouse_dpi as number) ?? 50}
+              min={0}
+              max={100}
+              onChange={(v) => set({ mouse_dpi: v })}
+            />
           </SettingCard>
         )}
       </div>

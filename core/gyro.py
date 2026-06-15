@@ -30,6 +30,7 @@ class GyroConfig:
     x_sensitivity: int = 50
     y_sensitivity: int = 50
     overlap_percent: int = 50
+    mouse_dpi: int = 50
     deadzone_min: int = 0
     antideadzone_min: int = 0
     deadzone_max: int = 100
@@ -49,6 +50,7 @@ class GyroConfig:
         self.x_sensitivity = max(0, min(100, self.x_sensitivity))
         self.y_sensitivity = max(0, min(100, self.y_sensitivity))
         self.overlap_percent = max(0, min(100, self.overlap_percent))
+        self.mouse_dpi = max(0, min(100, self.mouse_dpi))
         self.deadzone_min = max(0, min(100, self.deadzone_min))
         self.antideadzone_min = max(0, min(100, self.antideadzone_min))
         self.deadzone_max = max(0, min(100, self.deadzone_max))
@@ -85,8 +87,8 @@ def build_gyro_targeting(config: GyroConfig) -> bytes:
     packet[8] = GYRO_AXIS_MODES.get(config.axis_mode, 0)
     packet[9] = config.activate_button
     packet[10] = GYRO_METHODS.get(config.activate_method, 0)
-    packet[11] = 0x32
-    packet[12] = 0x32
+    packet[11] = config.mouse_dpi
+    packet[12] = config.mouse_dpi
     packet[13] = 0x01 if config.invert_x else 0x00
     packet[14] = 0x01 if config.invert_y else 0x00
     return bytes(packet)

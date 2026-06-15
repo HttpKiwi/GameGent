@@ -326,6 +326,7 @@ def set_gyro_endpoint():
             x_sensitivity=data.get('x_sens', 50),
             y_sensitivity=data.get('y_sens', 50),
             overlap_percent=data.get('overlap', 50),
+            mouse_dpi=data.get('mouse_dpi', 50),
             deadzone_min=data.get('deadzone_min', 0),
             deadzone_max=data.get('deadzone_max', 100),
             antideadzone_min=data.get('antideadzone_min', 0),

@@ -35,6 +35,7 @@ export interface GyroConfig {
   x_sensitivity: number;
   y_sensitivity: number;
   overlap_percent: number;
+  mouse_dpi: number;
   deadzone_min: number;
   deadzone_max: number;
   antideadzone_min: number;

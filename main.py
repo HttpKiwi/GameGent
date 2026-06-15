@@ -2,8 +2,14 @@
 """GameGent CLI — configure GameSir Tarantula Pro controller via USB HID."""
 
 import argparse
+import os
+import shutil
+import signal
+import subprocess
 import sys
 import time
+
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from core import (
     set_hardware_state, LIGHTING_MODES,
@@ -198,9 +204,10 @@ def cmd_gyro(args):
         axis_mode=args.axis,
         activate_method=args.method,
         activate_button=resolve_gyro_button(args.button),
-        x_sensitivity=args.x_sens,
-        y_sensitivity=args.y_sens,
+        x_sensitivity=100 - args.sens,
+        y_sensitivity=args.sens,
         overlap_percent=args.overlap,
+        mouse_dpi=args.mouse_dpi,
         deadzone_min=args.deadzone_min,
         deadzone_max=args.deadzone_max,
         antideadzone_min=args.antideadzone_min,
@@ -336,6 +343,50 @@ def cmd_status(args):
                     print(f"\n{page}:")
                     for reg, val in data.items():
                         print(f"  [{reg:02x}]: {val}")
+
+
+def cmd_serve(args):
+    base = os.path.dirname(os.path.abspath(__file__))
+    procs = []
+
+    def cleanup(*_):
+        for p in procs:
+            p.terminate()
+        for p in procs:
+            try:
+                p.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                p.kill()
+        sys.exit(0)
+
+    signal.signal(signal.SIGINT, cleanup)
+    signal.signal(signal.SIGTERM, cleanup)
+
+    if args.prod:
+        print("Building frontend...")
+        npm = shutil.which("npm")
+        if not npm:
+            print("Error: npm not found in PATH")
+            sys.exit(1)
+        build = subprocess.run([npm, "run", "build"], cwd=os.path.join(base, "web/react-app"))
+        if build.returncode != 0:
+            sys.exit(build.returncode)
+        print("Starting server at http://localhost:5000")
+        flask = subprocess.Popen([sys.executable, "web/app.py"], cwd=base)
+        procs.append(flask)
+        flask.wait()
+    else:
+        flask = subprocess.Popen([sys.executable, "web/app.py"], cwd=base)
+        procs.append(flask)
+        npm = shutil.which("npm")
+        if not npm:
+            print("Error: npm not found in PATH")
+            cleanup()
+        dev = subprocess.Popen([npm, "run", "dev"], cwd=os.path.join(base, "web/react-app"))
+        procs.append(dev)
+        print("Backend:  http://localhost:5000")
+        print("Frontend: http://localhost:5173")
+        dev.wait()
 
 
 def main():
@@ -488,8 +539,8 @@ def main():
     p.add_argument("--method", choices=list(GYRO_METHODS.keys()), default="hold")
     p.add_argument("--axis", choices=list(GYRO_AXIS_MODES.keys()), default="global")
     p.add_argument("--button", default="c1", help="Activate button (name or hex)")
-    p.add_argument("--x-sens", type=int, default=50)
-    p.add_argument("--y-sens", type=int, default=50)
+    p.add_argument("--sens", type=int, default=50, help="Sensitivity (0=favors X, 100=favors Y)")
+    p.add_argument("--mouse-dpi", type=int, default=50, help="Mouse DPI (mouse output mode)")
     p.add_argument("--overlap", type=int, default=50, help="Overlap threshold (keyboard mode)")
     p.add_argument("--deadzone-min", type=int, default=0)
     p.add_argument("--deadzone-max", type=int, default=100)
@@ -504,6 +555,11 @@ def main():
     p.add_argument("--invert-x", action="store_true", help="Invert X axis")
     p.add_argument("--invert-y", action="store_true", help="Invert Y axis")
     p.set_defaults(func=cmd_gyro)
+
+    # serve
+    p = sub.add_parser("serve", help="Start web interface (backend + frontend)")
+    p.add_argument("--prod", action="store_true", help="Build frontend, serve from Flask only")
+    p.set_defaults(func=cmd_serve)
 
     # config
     p = sub.add_parser("config", help="Get/set config values")
