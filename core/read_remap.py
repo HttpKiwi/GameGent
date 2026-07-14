@@ -1,28 +1,149 @@
-# core/read_remap.py — read button remap configuration
+# core/read_remap.py — read button remap configuration from hardware
 import os
-from .transport import open_device, init_session, read_page_register, drain
 
-# Button ID to name mapping
-BUTTON_NAMES = {
-    0x01: "A", 0x02: "B", 0x03: "X", 0x04: "Y",
-    0x05: "LB", 0x06: "RB", 0x07: "LT", 0x08: "RT",
-    0x09: "View", 0x0a: "Menu",
-    0x0c: "L3", 0x0d: "R3",
-    0x0e: "D-Up", 0x0f: "D-Down", 0x10: "D-Left", 0x11: "D-Right",
-    0x12: "Capture", 0x13: "Home",
-    0x20: "M1", 0x21: "M2", 0x22: "M3", 0x23: "M4",
-    0x24: "L4", 0x25: "R4", 0x26: "L5", 0x27: "R5",
-    0x28: "M5", 0x29: "M6",
-    0x30: "C1", 0x31: "C2", 0x32: "C3", 0x33: "C4",
-}
+from .hid_keycodes import (
+    CONTROLLER_BUTTON,
+    CONTROLLER_SOURCE,
+    KEYBOARD_USAGE,
+    MOUSE_BUTTON,
+    MOUSE_SCROLL,
+    REPORT_CONTROLLER,
+    REPORT_KEYBOARD,
+    REPORT_MOUSE,
+    REPORT_UNBIND,
+)
+from .transport import open_device, init_session, read_button_remap_register, drain
+
+# Page gateway observed in GameSir app captures: OUT 07 05 05 02, IN 06 13 05 02
+REMAP_RESPONSE_CLASS = 0x13
+REMAP_RESPONSE_SUBTYPE = 0x05
+
+# Native / no custom remap (seen on unmapped face buttons)
+REPORT_NATIVE = bytes([0x14, 0x01])
+
+REMAP_BUTTON_IDS = sorted(set(CONTROLLER_BUTTON.values()) | set(CONTROLLER_SOURCE.values()))
+
+_USAGE_TO_KEY = {v: k for k, v in KEYBOARD_USAGE.items()}
+_CONTROLLER_ID_TO_NAME = {v: k for k, v in CONTROLLER_BUTTON.items()}
+_CONTROLLER_ID_TO_NAME.update({v: k for k, v in CONTROLLER_SOURCE.items()})
+_MOUSE_BIT_TO_NAME = {v: k for k, v in MOUSE_BUTTON.items()}
+_SCROLL_VALUE_TO_NAME = {v: k for k, v in MOUSE_SCROLL.items()}
+
+_KNOWN_REPORTS = (
+    REPORT_CONTROLLER,
+    REPORT_KEYBOARD,
+    REPORT_MOUSE,
+    REPORT_UNBIND,
+)
 
 
-def read_remap_state():
-    """Read full remap configuration from controller.
+def button_index_to_name(button_index: int) -> str | None:
+    """Map hardware button index to GameGent source name."""
+    for name, idx in CONTROLLER_SOURCE.items():
+        if idx == button_index:
+            return name
+    for name, idx in CONTROLLER_BUTTON.items():
+        if idx == button_index:
+            return name
+    return None
 
-    Returns dict: {btn_id: {name, identity, raw_hex}}
-    Page 0x1a/0x0a register per button contains calibration + identity data.
-    The 3-byte value at bytes 28-30 encodes button identity (versioned).
+
+def _is_native(data: bytes) -> bool:
+    return REPORT_NATIVE in data[10:20]
+
+
+def _find_report(data: bytes) -> tuple[bytes, int] | None:
+    """Locate a remap report type marker and the payload offset that follows it."""
+    for offset in range(14, 20):
+        if offset + 1 >= len(data):
+            break
+        report = bytes(data[offset:offset + 2])
+        if report in _KNOWN_REPORTS:
+            return report, offset + 2
+        if report[0] == 0x01 and report[1] in (2, 3):
+            return report, offset + 2
+    return None
+
+
+def _decode_report_payload(report: bytes, payload: bytes) -> str | None:
+    if report in (REPORT_UNBIND, REPORT_NATIVE):
+        return None
+
+    if report == REPORT_CONTROLLER:
+        target_id = payload[0]
+        name = _CONTROLLER_ID_TO_NAME.get(target_id)
+        return f"controller:{name}" if name else f"controller:0x{target_id:02x}"
+
+    if report == REPORT_KEYBOARD:
+        usage = payload[1]
+        name = _USAGE_TO_KEY.get(usage)
+        return f"key:{name}" if name else f"key:0x{usage:02x}"
+
+    if report == REPORT_MOUSE:
+        scroll_val = payload[2]
+        if scroll_val in _SCROLL_VALUE_TO_NAME:
+            return f"mouse:{_SCROLL_VALUE_TO_NAME[scroll_val]}"
+        bitfield = payload[3]
+        name = _MOUSE_BIT_TO_NAME.get(bitfield)
+        return f"mouse:{name}" if name else f"mouse:0x{bitfield:02x}"
+
+    if report[0] == 0x01 and report[1] in (2, 3):
+        count = report[1]
+        keys = [payload[i] for i in range(count) if payload[i] != 0]
+        if keys:
+            parts = []
+            for key_id in keys:
+                name = _CONTROLLER_ID_TO_NAME.get(key_id, f"0x{key_id:02x}")
+                parts.append(f"controller:{name}")
+            return "+".join(parts)
+
+    return None
+
+
+def decode_target(data: bytes, button_index: int | None = None) -> str | None:
+    """Decode a remap read response into a GameGent target string, or None if native."""
+    if len(data) < 18 or data[0] != 0x06:
+        return None
+
+    if _is_native(data):
+        return None
+
+    found = _find_report(data)
+    if not found:
+        return None
+
+    report, payload_offset = found
+    if len(data) <= payload_offset:
+        return None
+
+    payload = data[payload_offset:payload_offset + 16]
+    target = _decode_report_payload(report, payload)
+    if not target:
+        return None
+
+    # GameSir leaves face buttons at identity mappings when unconfigured.
+    if button_index is not None:
+        source_name = button_index_to_name(button_index)
+        if source_name in CONTROLLER_BUTTON and target == f"controller:{source_name}":
+            return None
+
+    return target
+
+
+def read_button_mapping(fd, button_index: int) -> bytes | None:
+    """Read one button's remap packet. Returns raw response bytes or None."""
+    d = read_button_remap_register(fd, button_index)
+    if not d or len(d) < 18 or d[0] != 0x06:
+        return None
+    if d[1] != REMAP_RESPONSE_CLASS or d[2] != REMAP_RESPONSE_SUBTYPE or d[3] != 0x02:
+        return None
+    return bytes(d)
+
+
+def read_button_mappings() -> dict[str, str]:
+    """Read all remapped buttons from the controller.
+
+    Returns {source_name: target_string} matching config key_mappings format.
     """
     fd = open_device()
     try:
@@ -30,30 +151,51 @@ def read_remap_state():
         init_session(fd)
         drain(fd)
 
-        state = {}
-        for bid in sorted(BUTTON_NAMES.keys()):
-            d = read_page_register(fd, 0x1a, 0x0a, bid)
-            if d and any(b != 0 for b in bytes(d)[4:12]):
-                data = bytes(d)
-                identity = data[28:31]
-                state[bid] = {
-                    "name": BUTTON_NAMES.get(bid, f"0x{bid:02x}"),
-                    "identity": identity.hex(),
-                    "raw": data.hex(),
-                }
+        mappings: dict[str, str] = {}
+        for button_index in REMAP_BUTTON_IDS:
+            data = read_button_mapping(fd, button_index)
+            if not data:
+                drain(fd)
+                continue
+
+            source = button_index_to_name(button_index)
+            target = decode_target(data, button_index)
+            if source and target:
+                mappings[source] = target
             drain(fd)
+
+        return mappings
+    finally:
+        os.close(fd)
+
+
+def read_remap_state() -> dict[int, dict]:
+    """Read raw remap state for every known button (debug / CLI)."""
+    fd = open_device()
+    try:
+        drain(fd)
+        init_session(fd)
+        drain(fd)
+
+        state: dict[int, dict] = {}
+        for button_index in REMAP_BUTTON_IDS:
+            data = read_button_mapping(fd, button_index)
+            if not data:
+                drain(fd)
+                continue
+
+            state[button_index] = {
+                "name": button_index_to_name(button_index) or f"0x{button_index:02x}",
+                "target": decode_target(data, button_index),
+                "raw": data.hex(),
+            }
+            drain(fd)
+
         return state
     finally:
         os.close(fd)
 
 
-def get_button_identities():
-    """Return dict of {btn_id: identity_3bytes_hex} for all mappable buttons."""
-    state = read_remap_state()
-    return {bid: info["identity"] for bid, info in state.items()}
-
-
 if __name__ == "__main__":
     import json
-    state = read_remap_state()
-    print(json.dumps(state, indent=2))
+    print(json.dumps(read_button_mappings(), indent=2))

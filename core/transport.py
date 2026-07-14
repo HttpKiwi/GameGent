@@ -67,14 +67,23 @@ def send_cmd(fd, data):
     time.sleep(0.03)
 
 
-def read_response(fd, timeout=0.5):
-    """Read next HID input report with report ID 0x06."""
+def read_response(fd, timeout=0.5, header=None):
+    """Read next HID input report with report ID 0x06.
+
+    If header is set (e.g. bytes([0x13, 0x05, 0x02])), only return matching responses.
+    """
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
             d = os.read(fd, 128)
-            if d[0] == 6 and any(b != 0 for b in d[1:12]):
-                return d
+            if d[0] != 6:
+                continue
+            if header is not None:
+                if len(d) < 1 + len(header) or d[1:1 + len(header)] != header:
+                    continue
+            elif not any(b != 0 for b in d[1:12]):
+                continue
+            return d
         except (BlockingIOError, OSError):
             time.sleep(0.01)
     return None
@@ -97,6 +106,17 @@ def read_page_register(fd, class_byte, subtype, register=0):
     send_cmd(fd, cmd)
     time.sleep(0.04)
     return read_response(fd)
+
+
+def read_button_remap_register(fd, button_index):
+    """Read one button remap: 07 05 05 02 00 [button_index].
+
+    GameSir uses a leading zero byte before the button index (not little-endian 16-bit).
+    """
+    cmd = bytes([0x07, 0x05, 0x05, 0x02, 0x00, button_index & 0xFF]) + b"\x00" * 26
+    send_cmd(fd, cmd)
+    time.sleep(0.04)
+    return read_response(fd, header=bytes([0x13, 0x05, 0x02]))
 
 
 def read_typed_register(fd, class_byte, subtype, param=0):

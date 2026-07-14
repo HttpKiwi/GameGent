@@ -9,7 +9,7 @@ import subprocess
 import sys
 import time
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.realpath(__file__)))
 
 from core import (
     set_hardware_state, LIGHTING_MODES,
@@ -26,6 +26,7 @@ from core import (
     apply_macro,
     TriggerConfig, HAIR_MODES, set_trigger_config,
     load_config, save_config,
+    read_button_mappings, read_remap_state,
 )
 from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
 
@@ -183,6 +184,24 @@ def cmd_stick(args):
 def cmd_map(args):
     apply_mapping(args.button, args.target)
     print(f"Mapped {args.button} -> {args.target}")
+
+
+def cmd_read_mappings(args):
+    if args.raw:
+        import json
+        state = read_remap_state()
+        print(json.dumps(state, indent=2))
+        return
+
+    mappings = read_button_mappings()
+    if args.json:
+        import json
+        print(json.dumps(mappings, indent=2))
+    elif not mappings:
+        print("No remappings on device")
+    else:
+        for button, target in sorted(mappings.items()):
+            print(f"{button} -> {target}")
 
 
 def resolve_gyro_button(value):
@@ -345,8 +364,35 @@ def cmd_status(args):
                         print(f"  [{reg:02x}]: {val}")
 
 
+def _venv_python(base: str) -> str:
+    for candidate in ("venv/bin/python3", "venv/bin/python", ".venv/bin/python3", ".venv/bin/python"):
+        path = os.path.join(base, candidate)
+        if os.path.isfile(path):
+            return path
+    return sys.executable
+
+
+def _project_venv_prefix(base: str) -> str | None:
+    for name in ("venv", ".venv"):
+        path = os.path.join(base, name)
+        if os.path.isdir(path):
+            return os.path.realpath(path)
+    return None
+
+
+def _using_project_venv(base: str) -> bool:
+    """True if this process is already running inside the project venv.
+
+    Do not compare realpath(sys.executable): venv/bin/python often symlinks
+    to the system interpreter, so realpath matches even when site-packages don't.
+    """
+    prefix = _project_venv_prefix(base)
+    return prefix is not None and os.path.realpath(sys.prefix) == prefix
+
+
 def cmd_serve(args):
-    base = os.path.dirname(os.path.abspath(__file__))
+    base = os.path.dirname(os.path.realpath(__file__))
+    python = _venv_python(base)
     procs = []
 
     def cleanup(*_):
@@ -372,11 +418,11 @@ def cmd_serve(args):
         if build.returncode != 0:
             sys.exit(build.returncode)
         print("Starting server at http://localhost:5000")
-        flask = subprocess.Popen([sys.executable, "web/app.py"], cwd=base)
+        flask = subprocess.Popen([python, "web/app.py"], cwd=base)
         procs.append(flask)
         flask.wait()
     else:
-        flask = subprocess.Popen([sys.executable, "web/app.py"], cwd=base)
+        flask = subprocess.Popen([python, "web/app.py"], cwd=base)
         procs.append(flask)
         npm = shutil.which("npm")
         if not npm:
@@ -387,6 +433,16 @@ def cmd_serve(args):
         print("Backend:  http://localhost:5000")
         print("Frontend: http://localhost:5173")
         dev.wait()
+
+
+def cmd_app(_args):
+    """Open GameGent as a native desktop window."""
+    base = os.path.dirname(os.path.realpath(__file__))
+    python = _venv_python(base)
+    if not _using_project_venv(base) and python != sys.executable:
+        os.execv(python, [python, os.path.realpath(__file__), "app"])
+    from desktop.app import run_desktop_app
+    run_desktop_app()
 
 
 def main():
@@ -518,6 +574,11 @@ def main():
     p.add_argument("target")
     p.set_defaults(func=cmd_map)
 
+    p = sub.add_parser("read-mappings", help="Read button remaps from controller")
+    p.add_argument("--json", action="store_true", help="Output as JSON")
+    p.add_argument("--raw", action="store_true", help="Include raw HID response packets")
+    p.set_defaults(func=cmd_read_mappings)
+
     # combo
     p = sub.add_parser("combo", help="Set combo keys (press multiple controller buttons together)")
     p.add_argument("button", help="Source button (e.g. l4, c1)")
@@ -560,6 +621,10 @@ def main():
     p = sub.add_parser("serve", help="Start web interface (backend + frontend)")
     p.add_argument("--prod", action="store_true", help="Build frontend, serve from Flask only")
     p.set_defaults(func=cmd_serve)
+
+    # app (desktop)
+    p = sub.add_parser("app", help="Open native desktop app (pywebview)")
+    p.set_defaults(func=cmd_app)
 
     # config
     p = sub.add_parser("config", help="Get/set config values")

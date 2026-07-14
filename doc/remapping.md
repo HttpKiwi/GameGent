@@ -83,6 +83,10 @@ python3 main.py map c1 key:enter          # C1 → Enter key
 python3 main.py map l4 controller:a       # L4 → A button
 python3 main.py map r4 mouse:left_click   # R4 → left click
 python3 main.py map t1 unbind             # T1 → disabled
+
+python3 main.py read-mappings             # Read onboard remaps
+python3 main.py read-mappings --json
+python3 main.py read-mappings --raw
 ```
 
 Source buttons: `c1 c2 c3 c4 t1 t2 t3 l4 r4`
@@ -112,18 +116,23 @@ core/
   hid_keycodes.py      # USB HID usage tables + remap packet builders
   config.py            # JSON config persistence
   lighting.py          # Lighting modes + color
-  remap.py             # Button remap logic
+  remap.py             # Button remap write logic
+  read_remap.py        # Button remap read / decode
   stick.py             # Stick config + curve presets
   rumble.py            # Grip rumble set/fire/read
   gyro.py              # Gyro/motion aim config
   read_state.py        # Full controller state read
+desktop/
+  app.py               # pywebview desktop launcher
 main.py                # CLI entry point (argparse)
-pcapng/                # Reference USB captures
+pcapng/                # Reference USB captures (GameSir app)
 ```
 
 ## Remapping Packet Reference
 
-All commands are 32-byte HID output reports. Header `07 13 05 01`.
+### Writes (host → device)
+
+All remap **write** commands are 32-byte HID output reports. Header `07 13 05 01`.
 
 ### Keyboard (`02 02`)
 
@@ -158,6 +167,38 @@ Byte 16: target controller button ID.
 ```
 07 13 05 01 00 00 00 00 00 00 {BTN} 00 00 01 00 00 [16 zeros]
 ```
+
+### Reads (onboard remap state)
+
+GameSir app traffic uses a **separate** page-gateway read (not `07 13 05 02`).
+
+Observed on Windows USBPcap (filter `usbhid.data` on EP **0x01 OUT** / **0x82 IN** — not gamepad EP 0x81):
+
+```
+OUT: 07 05 05 02 00 {BTN} 00…   (32 bytes, zero-padded)
+IN:  06 13 05 02 …               (64-byte report on Linux hidraw; report ID 0x06)
+```
+
+Important: the button index is at byte **5** of the OUT command (`00 {BTN}`), **not** little-endian `{BTN} 00`. Sending `{BTN} 00` returns empty/wrong payloads.
+
+Linux hidraw response layout (verified against live device + PCAP):
+
+| Offset | Meaning |
+|--------|---------|
+| 0 | Report ID `0x06` |
+| 1–3 | `13 05 02` (remap response header) |
+| 4 or 10 | Button index (layout varies by padding; GameGent matches either) |
+| mid-packet | Report type `01 01` / `02 02` / `03 04` / `00 00`, or native `14 01` |
+| payload | Same 16-byte payload shape as write packets |
+
+Decode rules used by `core/read_remap.py`:
+- `14 01` → native / not remapped → omit from output
+- Face-button identity (`a→a`, `y→y`, …) → treat as unmapped
+- `01 01` + target id → `controller:…`
+- `02 02` / `03 04` → keyboard / mouse targets
+
+CLI: `gamegent read-mappings [--json|--raw]`  
+API: `POST /api/mappings/read` `{ "sync": false }` → `{ "key_mappings": {…} }` (503 if dongle missing)
 
 ## HID Keycode Reference
 
@@ -234,5 +275,6 @@ Geometry: `07 18 02 01 [7b offset] [circle] [0x32] [dz_min] [anti_min] [6b curve
 
 ## Known Limitations
 
-- Button remap state cannot be read back from hardware (write-only)
-- D-pad, trigger, and profile settings not yet implemented
+- Onboard remap changes have no USB event; clients must poll reads
+- Multi-profile / profile-slot switching not yet implemented
+- D-pad/trigger advanced profile tooling may still be incomplete vs GameSir app

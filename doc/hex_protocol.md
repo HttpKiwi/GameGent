@@ -7,12 +7,13 @@ GameGent is a native Linux tool for configuring the GameSir Tarantula Pro contro
 - Lighting modes and colors
 - Stick behavior (native, mouse, keyboard, clone modes)
 - Gyro/motion aim
-- Button remapping, combos, and macros
+- Button remapping (write + read), combos, and macros
 - Trigger deadzones and hair trigger
 - Rumble motors
 
 The tool uses a vendor/product ID pair (3537:103e) to locate the hidraw device and sends configuration packets without requiring Windows or proprietary DLLs.
 
+Config / remap traffic is on a **HID config interface** (EP 0x01 OUT, 0x82 IN). Gamepad input lives on EP 0x81 and is unrelated to remap read/write.
 ---
 
 ## Packet Structure Overview
@@ -51,7 +52,14 @@ Switches device to configuration mode.
 ```
 Header: 07 [class] [subtype] 02 [reg_lo] [reg_hi]
 ```
-Reads a specific register from a configuration page.
+Reads a specific register from a configuration page (little-endian register word).
+
+**Button Remap Register Read** (`read_button_remap_register`):
+```
+Header: 07 05 05 02 00 [button_index]
+```
+GameSir remap reads use a **leading zero** before the button index (not LE `[btn] 00`).
+Responses must be matched with header `06 13 05 02` (see `core/read_remap.py`).
 
 **Typed Register Read** (`read_typed_register`):
 ```
@@ -400,6 +408,39 @@ Bytes 6-31: 0x00 (padding)
 ```
 07 03 08 03 [28 bytes of 0x00]
 ```
+
+---
+
+### core/read_remap.py
+
+**Purpose**: Read onboard button remaps from hardware (discovered via GameSir app PCAP).
+
+**USB context** (Windows USBPcap / Wireshark):
+- Config channel: EP **0x01 OUT**, EP **0x82 IN**, field `usbhid.data`
+- Gamepad noise: EP **0x81** (ignore when analyzing remaps)
+
+**Read command** (`read_button_remap_register` in `transport.py`):
+```
+OUT: 07 05 05 02 00 [button_index] [zeros…]
+```
+Not little-endian: must be `00 [btn]`, **not** `[btn] 00`.
+
+**Response**:
+```
+IN: 06 13 05 02 …
+```
+Linux hidraw returns a 64-byte report. Match `d[0]==0x06` and `d[1:4]==13 05 02`.
+
+**Decode**:
+- Native / stock face mapping marker: `14 01` → no custom remap
+- Report types same as writes: `01 01` controller, `02 02` keyboard, `03 04` mouse, `00 00` unbind
+- Payload follows the report type (same layout as write payloads)
+- Identity face mappings (`a→a`) are filtered out as “unmapped”
+
+**CLI / API**:
+- `gamegent read-mappings [--json|--raw]`
+- `POST /api/mappings/read` → `{ key_mappings: {…} }`
+- `GET /api/status` → `{ connected: bool, path: string|null }`
 
 ---
 
