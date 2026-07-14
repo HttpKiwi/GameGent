@@ -28,6 +28,15 @@ export async function apiCall<T = unknown>(
   return result as T;
 }
 
+export interface DeviceStatus {
+  connected: boolean;
+  path: string | null;
+}
+
+export async function getDeviceStatus(): Promise<DeviceStatus> {
+  return apiCall('/status');
+}
+
 export async function fetchConfig(): Promise<Record<string, unknown>> {
   return apiCall('/config');
 }
@@ -95,6 +104,10 @@ export async function applyRemap(data: {
   target: string;
 }): Promise<void> {
   await apiCall('/map', { method: 'POST', data });
+}
+
+export async function readDeviceMappings(sync = false): Promise<{ key_mappings: Record<string, string> }> {
+  return apiCall('/mappings/read', { method: 'POST', data: { sync } });
 }
 
 export async function unmapRemap(data: { button: string }): Promise<void> {

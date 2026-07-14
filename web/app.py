@@ -21,10 +21,11 @@ from core import (
     apply_macro,
     TriggerConfig, HAIR_MODES, set_trigger_config,
     load_config, save_config,
+    read_button_mappings,
 )
 from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
 from core.remap import resolve_button_index, resolve_target_packet
-from core.transport import open_device
+from core.transport import open_device, find_dongle_path
 
 app = Flask(__name__)
 CORS(app)
@@ -36,19 +37,45 @@ USE_REACT = os.path.exists(os.path.join(REACT_DIST, 'index.html'))
 @app.route('/')
 def index():
     if USE_REACT:
-        return send_from_directory(REACT_DIST, 'index.html')
+        response = send_from_directory(REACT_DIST, 'index.html')
+        response.headers['Cache-Control'] = 'no-store'
+        return response
     return send_from_directory('templates', 'index.html')
 
 
 @app.route('/assets/<path:path>')
 def serve_react_assets(path):
     assets_dir = os.path.join(REACT_DIST, 'assets')
-    return send_from_directory(assets_dir, path)
+    response = send_from_directory(assets_dir, path)
+    # Hashed filenames are immutable; keep short cache for html-driven reloads
+    response.headers['Cache-Control'] = 'public, max-age=60'
+    return response
 
 
 @app.route('/static/<path:path>')
 def serve_static(path):
     return send_from_directory('static', path)
+
+
+@app.route('/api/status', methods=['GET'])
+def device_status():
+    """Dongle connection status."""
+    path = find_dongle_path()
+    return jsonify({'connected': path is not None, 'path': path})
+
+
+@app.route('/api/gamepad', methods=['GET'])
+def gamepad_state():
+    """Live Linux joystick state for the in-app tester.
+
+    Uses /dev/input/js* (skips GameSir mouse/keyboard passthrough) because
+    WebKitGTK's Gamepad API collapses trigger/hat axes into stick axes.
+    """
+    try:
+        from core.gamepad_read import read_gamepad_state
+        return jsonify(read_gamepad_state())
+    except Exception as e:
+        return jsonify({'connected': False, 'error': str(e)}), 500
 
 
 @app.route('/api/config', methods=['GET'])
@@ -368,6 +395,27 @@ def set_map_endpoint():
         target = data.get('target')
         apply_mapping(button, target)
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/mappings/read', methods=['POST'])
+def read_mappings_endpoint():
+    """Read button remaps from controller hardware."""
+    if not find_dongle_path():
+        return jsonify({'error': 'GameSir Dongle not found'}), 503
+    try:
+        mappings = read_button_mappings()
+        sync = False
+        if request.is_json and request.json:
+            sync = bool(request.json.get('sync', False))
+        if sync:
+            config = load_config()
+            config['key_mappings'] = mappings
+            save_config(config)
+        return jsonify({'key_mappings': mappings})
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 503
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

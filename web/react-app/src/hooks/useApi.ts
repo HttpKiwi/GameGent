@@ -1,7 +1,36 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import * as api from '../api/client';
 import { useConfigStore } from '../stores/configStore';
 import type { GameGentConfig } from '../types/config';
+
+export function useDeviceStatus() {
+  return useQuery({
+    queryKey: ['device-status'],
+    queryFn: api.getDeviceStatus,
+    refetchInterval: 2000,
+  });
+}
+
+export function useDeviceMappingsPoll(connected: boolean) {
+  const setKeyMappingsFromDevice = useConfigStore((s) => s.setKeyMappingsFromDevice);
+
+  const query = useQuery({
+    queryKey: ['device-mappings'],
+    queryFn: () => api.readDeviceMappings(false),
+    enabled: connected,
+    refetchInterval: 4000,
+    retry: false,
+  });
+
+  useEffect(() => {
+    if (query.data?.key_mappings) {
+      setKeyMappingsFromDevice(query.data.key_mappings);
+    }
+  }, [query.data, setKeyMappingsFromDevice]);
+
+  return query;
+}
 
 export function useConfig() {
   const setConfigFromServer = useConfigStore((s) => s.setConfigFromServer);
@@ -76,6 +105,24 @@ export function useGyro() {
 
 export function useRemap() {
   return useGenericMutation(api.applyRemap);
+}
+
+export function useReadDeviceMappings() {
+  const queryClient = useQueryClient();
+  const setConfig = useConfigStore((s) => s.setConfig);
+  const setDirty = useConfigStore((s) => s.setDirty);
+
+  return useMutation({
+    mutationFn: (sync: boolean = false) => api.readDeviceMappings(sync),
+    onSuccess: (result, sync) => {
+      const config = useConfigStore.getState().config;
+      setConfig({ ...config, key_mappings: result.key_mappings });
+      if (sync) {
+        setDirty(false);
+      }
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+    },
+  });
 }
 
 export function useUnmap() {

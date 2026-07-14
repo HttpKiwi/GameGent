@@ -10,7 +10,7 @@ import { ButtonsTab } from './tabs/ButtonsTab';
 import { RumbleTab } from './tabs/RumbleTab';
 import { CombosTab } from './tabs/CombosTab';
 import { MacrosTab } from './tabs/MacrosTab';
-import { useConfig, useSaveConfig } from './hooks/useApi';
+import { useConfig, useSaveConfig, useDeviceStatus, useDeviceMappingsPoll } from './hooks/useApi';
 import { useConfigStore } from './stores/configStore';
 import { useEffect } from 'react';
 import './App.css';
@@ -18,42 +18,76 @@ import './App.css';
 const queryClient = new QueryClient();
 
 const TABS = [
-  { id: 'dashboard', label: 'Dashboard', content: <DashboardTab /> },
-  { id: 'lighting', label: 'Lighting', content: <LightingTab /> },
-  { id: 'face-leds', label: 'Face LEDs', content: <FaceLEDsTab /> },
-  { id: 'triggers', label: 'Triggers', content: <TriggersTab /> },
-  { id: 'sticks', label: 'Sticks', content: <SticksTab /> },
-  { id: 'gyro', label: 'Gyro', content: <GyroTab /> },
-  { id: 'buttons', label: 'Buttons', content: <ButtonsTab /> },
-  { id: 'rumble', label: 'Rumble', content: <RumbleTab /> },
-  { id: 'combos', label: 'Combos', content: <CombosTab /> },
-  { id: 'macros', label: 'Macros', content: <MacrosTab /> },
+  { id: 'dashboard', label: 'Dashboard', group: 'overview', content: <DashboardTab /> },
+  { id: 'lighting', label: 'Lighting', group: 'appearance', content: <LightingTab /> },
+  { id: 'face-leds', label: 'Face LEDs', group: 'appearance', content: <FaceLEDsTab /> },
+  { id: 'rumble', label: 'Rumble', group: 'appearance', content: <RumbleTab /> },
+  { id: 'triggers', label: 'Triggers', group: 'controls', content: <TriggersTab /> },
+  { id: 'sticks', label: 'Sticks', group: 'controls', content: <SticksTab /> },
+  { id: 'gyro', label: 'Gyro', group: 'controls', content: <GyroTab /> },
+  { id: 'buttons', label: 'Buttons', group: 'controls', content: <ButtonsTab /> },
+  { id: 'combos', label: 'Combos', group: 'advanced', content: <CombosTab /> },
+  { id: 'macros', label: 'Macros', group: 'advanced', content: <MacrosTab /> },
 ];
+
+function ConnectionIndicator() {
+  const { data, isError, isPending } = useDeviceStatus();
+  const connected = data?.connected === true;
+  useDeviceMappingsPoll(connected);
+
+  let label = 'Checking…';
+  let state: 'pending' | 'connected' | 'disconnected' = 'pending';
+  if (isError) {
+    label = 'Disconnected';
+    state = 'disconnected';
+  } else if (!isPending) {
+    label = connected ? 'Connected' : 'Disconnected';
+    state = connected ? 'connected' : 'disconnected';
+  }
+
+  return (
+    <div className={`connection-pill connection-pill--${state}`} title={data?.path ?? undefined}>
+      <span className="connection-pill__dot" aria-hidden />
+      <span>{label}</span>
+    </div>
+  );
+}
 
 function AppContent() {
   const { data: serverConfig } = useConfig();
-  const setConfig = useConfigStore((s) => s.setConfig);
+  const setConfigFromServer = useConfigStore((s) => s.setConfigFromServer);
   const config = useConfigStore((s) => s.config);
+  const isDirty = useConfigStore((s) => s.isDirty);
   const saveConfig = useSaveConfig();
 
   useEffect(() => {
     if (serverConfig) {
-      setConfig(serverConfig as Record<string, unknown>);
+      setConfigFromServer(serverConfig);
     }
-  }, [serverConfig, setConfig]);
+  }, [serverConfig, setConfigFromServer]);
 
   return (
-    <div className="container">
-      <header>
-        <h1>GameGent</h1>
-        <p>GameSir Tarantula Pro Configuration</p>
+    <div className="app">
+      <header className="app-header">
+        <div className="app-header__brand">
+          <div className="app-header__logo">GG</div>
+          <div>
+            <h1>GameGent</h1>
+            <p>GameSir Tarantula Pro</p>
+          </div>
+        </div>
+        <ConnectionIndicator />
       </header>
 
       <TabLayout tabs={TABS} />
 
-      <footer>
-        <button className="global-save-btn" onClick={() => saveConfig.mutate(config)}>
-          Save All Configuration
+      <footer className="app-footer">
+        <button
+          className={`global-save-btn ${isDirty ? 'global-save-btn--dirty' : ''}`}
+          onClick={() => saveConfig.mutate(config)}
+          disabled={saveConfig.isPending}
+        >
+          {saveConfig.isPending ? 'Saving…' : isDirty ? 'Save Configuration •' : 'Save All Configuration'}
         </button>
       </footer>
     </div>
