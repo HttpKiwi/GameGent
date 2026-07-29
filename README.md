@@ -183,10 +183,26 @@ python3 main.py config --get stick_left.deadzone_min
 | dpad_left | 0x0c | dpad_right | 0x0d |
 | screenshot | 0x2d |
 
+## Software Profiles
+
+Named configs live under `~/.config/gamegent/profiles/` (not GameSir onboard slots).
+The working config remains `~/.config/gamegent/config.json`; activating a profile copies it there and can push settings to the controller.
+
+```bash
+gamegent profile list
+gamegent profile save FPS
+gamegent profile load FPS            # load + apply to hardware
+gamegent profile load FPS --no-apply # config file only
+gamegent profile apply               # push working config
+gamegent profile delete FPS
+```
+
+In the UI: **Profiles** tab, plus a header profile switcher once you have at least one saved.
+
 ## Known Limitations
 
 - Remap changes onboard are only visible via polling (no USB push notification)
-- Profile switching / multi-profile storage is not yet implemented
+- Onboard GameSir profile slots are not implemented (software profiles only)
 - Face button LED colors require all 4 sent at once (cached via config for single-button mode)
 - Device must be unbound from VM passthrough before use
 - `gamegent` must run via the project venv (`./venv/bin/…`); the launcher re-execs into it (do not use system `pip` on Arch)

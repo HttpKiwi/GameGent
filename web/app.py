@@ -26,6 +26,10 @@ from core import (
 from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
 from core.remap import resolve_button_index, resolve_target_packet
 from core.transport import open_device, find_dongle_path
+from core.profiles import (
+    list_profiles, save_profile, delete_profile, activate_profile, get_active_profile,
+)
+from core.apply_config import apply_config_to_device
 
 app = Flask(__name__)
 CORS(app)
@@ -95,6 +99,87 @@ def save_config_endpoint():
         config = request.json
         save_config(config)
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/config/apply', methods=['POST'])
+def apply_config_endpoint():
+    """Push current (or provided) config to the controller."""
+    try:
+        data = request.json or {}
+        config = data.get('config') or load_config()
+        applied = apply_config_to_device(config)
+        return jsonify({'success': True, 'applied': applied})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/profiles', methods=['GET'])
+def get_profiles():
+    """List software profiles."""
+    try:
+        return jsonify({
+            'profiles': list_profiles(),
+            'active': get_active_profile(),
+        })
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/profiles', methods=['POST'])
+def create_or_update_profile():
+    """Save current or provided config as a named software profile."""
+    try:
+        data = request.json or {}
+        name = data.get('name')
+        if not name:
+            return jsonify({'error': 'name is required'}), 400
+        config = data.get('config')
+        make_active = data.get('make_active', True)
+        meta = save_profile(name, config, make_active=make_active)
+        return jsonify({'success': True, **meta, 'active': get_active_profile()})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/profiles/activate', methods=['POST'])
+def activate_profile_endpoint():
+    """Load a profile into working config; optionally apply to hardware."""
+    try:
+        data = request.json or {}
+        name = data.get('name')
+        if not name:
+            return jsonify({'error': 'name is required'}), 400
+        apply = data.get('apply', True)
+        result = activate_profile(name, apply=apply)
+        return jsonify({
+            'success': True,
+            'name': result['name'],
+            'active': get_active_profile(),
+            'config': result['config'],
+            'applied': result['applied'],
+        })
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/profiles/<name>', methods=['DELETE'])
+def delete_profile_endpoint(name):
+    """Delete a software profile."""
+    try:
+        delete_profile(name)
+        return jsonify({'success': True, 'active': get_active_profile()})
+    except FileNotFoundError as e:
+        return jsonify({'error': str(e)}), 404
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 

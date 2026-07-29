@@ -29,6 +29,10 @@ from core import (
     read_button_mappings, read_remap_state,
 )
 from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
+from core.profiles import (
+    list_profiles, save_profile, delete_profile, activate_profile, get_active_profile, load_profile,
+)
+from core.apply_config import apply_config_to_device
 
 
 def cmd_light(args):
@@ -297,6 +301,67 @@ def cmd_config(args):
                 target[keys[-1]] = value
             save_config(config)
             print(f"Set {key} = {value}")
+
+
+def cmd_profile(args):
+    action = getattr(args, "profile_action", None)
+    if not action:
+        print("Usage: gamegent profile {list,save,show,load,delete,apply} …")
+        sys.exit(1)
+
+    if action == "list":
+        active = get_active_profile()
+        profiles = list_profiles()
+        if not profiles:
+            print("No profiles saved yet.")
+            print("  gamegent profile save <name>")
+            return
+        for p in profiles:
+            mark = " *" if p["name"] == active else ""
+            updated = p.get("updated_at") or ""
+            print(f"{p['name']}{mark}" + (f"  ({updated})" if updated else ""))
+        if active:
+            print(f"\nActive: {active}")
+        return
+
+    if action == "save":
+        meta = save_profile(args.name)
+        print(f"Saved profile: {meta['name']}")
+        return
+
+    if action == "show":
+        import json
+        print(json.dumps(load_profile(args.name), indent=2))
+        return
+
+    if action == "load":
+        result = activate_profile(args.name, apply=not args.no_apply)
+        print(f"Loaded profile: {result['name']}")
+        if result["applied"] is not None:
+            for section, status in result["applied"].items():
+                print(f"  {section}: {status}")
+        elif args.no_apply:
+            print("  (config only; skipped hardware apply)")
+        return
+
+    if action == "delete":
+        delete_profile(args.name)
+        print(f"Deleted profile: {args.name}")
+        return
+
+    if action == "apply":
+        name = args.name
+        if name:
+            config = load_profile(name)
+            print(f"Applying profile: {name}")
+        else:
+            config = load_config()
+            active = get_active_profile()
+            print(f"Applying {'active profile ' + active if active else 'working config'}")
+        applied = apply_config_to_device(config)
+        for section, status in applied.items():
+            print(f"  {section}: {status}")
+        return
 
 
 def cmd_status(args):
@@ -632,6 +697,36 @@ def main():
     p.add_argument("--get", help="Get config key (dot notation)")
     p.add_argument("--set", help="Set config key=value (dot notation)")
     p.set_defaults(func=cmd_config)
+
+    # profile (software profiles)
+    p = sub.add_parser("profile", help="Manage local software profiles")
+    p_sub = p.add_subparsers(dest="profile_action")
+
+    p_list = p_sub.add_parser("list", help="List saved profiles")
+    p_list.set_defaults(func=cmd_profile)
+
+    p_save = p_sub.add_parser("save", help="Save working config as a named profile")
+    p_save.add_argument("name", help="Profile name")
+    p_save.set_defaults(func=cmd_profile)
+
+    p_show = p_sub.add_parser("show", help="Print a profile as JSON")
+    p_show.add_argument("name", help="Profile name")
+    p_show.set_defaults(func=cmd_profile)
+
+    p_load = p_sub.add_parser("load", help="Load a profile into working config")
+    p_load.add_argument("name", help="Profile name")
+    p_load.add_argument("--no-apply", action="store_true", help="Skip pushing to controller")
+    p_load.set_defaults(func=cmd_profile)
+
+    p_del = p_sub.add_parser("delete", help="Delete a profile")
+    p_del.add_argument("name", help="Profile name")
+    p_del.set_defaults(func=cmd_profile)
+
+    p_apply = p_sub.add_parser("apply", help="Push profile (or working config) to controller")
+    p_apply.add_argument("name", nargs="?", help="Profile name (default: working config)")
+    p_apply.set_defaults(func=cmd_profile)
+
+    p.set_defaults(func=cmd_profile)
 
     # status
     p = sub.add_parser("status", help="Read current controller state")

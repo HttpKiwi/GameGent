@@ -45,6 +45,52 @@ export async function saveConfig(config: Record<string, unknown>): Promise<void>
   await apiCall('/config', { method: 'POST', data: config });
 }
 
+export async function applyConfig(config?: Record<string, unknown>): Promise<{
+  applied: Record<string, string>;
+}> {
+  return apiCall('/config/apply', {
+    method: 'POST',
+    data: config ? { config } : {},
+  });
+}
+
+export interface ProfileInfo {
+  name: string;
+  updated_at: string | null;
+  active: boolean;
+}
+
+export async function listProfiles(): Promise<{
+  profiles: ProfileInfo[];
+  active: string | null;
+}> {
+  return apiCall('/profiles');
+}
+
+export async function saveProfile(data: {
+  name: string;
+  config?: Record<string, unknown>;
+  make_active?: boolean;
+}): Promise<{ name: string; active: string | null }> {
+  return apiCall('/profiles', { method: 'POST', data });
+}
+
+export async function activateProfile(data: {
+  name: string;
+  apply?: boolean;
+}): Promise<{
+  name: string;
+  active: string | null;
+  config: Record<string, unknown>;
+  applied: Record<string, string> | null;
+}> {
+  return apiCall('/profiles/activate', { method: 'POST', data });
+}
+
+export async function deleteProfile(name: string): Promise<{ active: string | null }> {
+  return apiCall(`/profiles/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
 export async function setLighting(data: {
   mode: string;
   brightness: number;

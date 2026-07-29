@@ -276,5 +276,5 @@ Geometry: `07 18 02 01 [7b offset] [circle] [0x32] [dz_min] [anti_min] [6b curve
 ## Known Limitations
 
 - Onboard remap changes have no USB event; clients must poll reads
-- Multi-profile / profile-slot switching not yet implemented
+- GameSir onboard profile slots are not implemented; use GameGent software profiles (`gamegent profile …`)
 - D-pad/trigger advanced profile tooling may still be incomplete vs GameSir app

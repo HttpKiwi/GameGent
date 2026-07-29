@@ -58,6 +58,56 @@ export function useSaveConfig() {
   });
 }
 
+export function useProfiles() {
+  return useQuery({
+    queryKey: ['profiles'],
+    queryFn: api.listProfiles,
+  });
+}
+
+export function useSaveProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (data: { name: string; config?: GameGentConfig; make_active?: boolean }) =>
+      api.saveProfile(data),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+}
+
+export function useActivateProfile() {
+  const queryClient = useQueryClient();
+  const replaceConfig = useConfigStore((s) => s.replaceConfig);
+
+  return useMutation({
+    mutationFn: (data: { name: string; apply?: boolean }) => api.activateProfile(data),
+    onSuccess: (result) => {
+      replaceConfig(result.config as GameGentConfig);
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+    },
+  });
+}
+
+export function useDeleteProfile() {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (name: string) => api.deleteProfile(name),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+    },
+  });
+}
+
+export function useApplyConfig() {
+  return useMutation({
+    mutationFn: (config?: GameGentConfig) => api.applyConfig(config),
+  });
+}
+
 function useGenericMutation<T>(
   mutationFn: (data: T) => Promise<void>,
   options?: { successMessage?: string }

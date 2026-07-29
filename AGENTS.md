@@ -32,6 +32,8 @@ gamegent app
 - `GET /api/status` — dongle connected? (`find_dongle_path`)
 - `GET /api/gamepad` — live Linux joystick state for the in-app tester (`core/gamepad_read.py`)
 - `POST /api/mappings/read` — onboard remaps (`read_button_mappings`); 503 if disconnected
+- `GET/POST /api/profiles`, `POST /api/profiles/activate`, `DELETE /api/profiles/<name>` — software profiles (`core/profiles.py`)
+- `POST /api/config/apply` — push working config to hardware (`core/apply_config.py`)
 - UI polls status (~2s) and mappings (~4s) while connected; skips overwrite if config is dirty
 
 ## Live tester note

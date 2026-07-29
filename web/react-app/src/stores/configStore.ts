@@ -10,6 +10,7 @@ interface ConfigState {
   isDirty: boolean;
   setConfig: (config: GameGentConfig) => void;
   setConfigFromServer: (config: GameGentConfig) => void;
+  replaceConfig: (config: GameGentConfig) => void;
   setKeyMappingsFromDevice: (key_mappings: Record<string, string>) => void;
   updateConfig: (updates: Partial<GameGentConfig>) => void;
   setDirty: (dirty: boolean) => void;
@@ -27,6 +28,10 @@ export const useConfigStore = create<ConfigState>((set, get) => ({
   setConfigFromServer: (config) => {
     if (get().isDirty) return;
     set({ config, lastHash: generateHash(config) });
+  },
+
+  replaceConfig: (config) => {
+    set({ config, lastHash: generateHash(config), isDirty: false });
   },
 
   setKeyMappingsFromDevice: (key_mappings) => {
