@@ -54,8 +54,12 @@ def button_index_to_name(button_index: int) -> str | None:
 
 
 def _is_native(data: bytes) -> bool:
-    """Native slot: bytes 13–14 are 14 01 (not a normal flag+report)."""
-    return len(data) > 14 and bytes(data[13:15]) == REPORT_NATIVE
+    """Native slot: bytes 13–14 are 14 01 (not a normal flag+report).
+
+    Byte 12 (turbo mode) must be off: a 20 Hz turbo on a controller target has the
+    same bytes 13–14 (rate 0x14, joystick type 01).
+    """
+    return len(data) > 14 and bytes(data[13:15]) == REPORT_NATIVE and data[12] == 0
 
 
 def _report_type(data: bytes) -> bytes | None:
@@ -119,7 +123,7 @@ def decode_turbo(data: bytes) -> dict | None:
     if len(data) < 14 or _is_native(data):
         return None
     continuous = data[11] == 0x01
-    turbo_on = data[12] == 0x02
+    turbo_on = data[12] in (1, 2, 3)  # turbo modes A/B/C, picked by rate
     if not turbo_on and not continuous:
         return None
     rate = int(data[13]) if turbo_on else 10

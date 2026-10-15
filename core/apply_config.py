@@ -197,7 +197,7 @@ def _apply_mappings(config: dict, previous: dict | None) -> str:
         if previous is None or old_maps.get(button) != target or old_turbo.get(button) != turbo_settings.get(button):
             work[button] = target
     if previous is not None:
-        work.update({b: "unbind" for b in old_maps if b not in mappings})
+        work.update({b: "reset" for b in old_maps if b not in mappings})
 
     ok, errors = 0, []
     for button, target in work.items():
@@ -206,7 +206,7 @@ def _apply_mappings(config: dict, previous: dict | None) -> str:
         try:
             apply_mapping(button, target)
             turbo = turbo_settings.get(button)
-            if isinstance(turbo, dict) and target != "unbind":
+            if isinstance(turbo, dict) and target not in ("unbind", "reset"):
                 set_turbo(button, turbo.get("target") or target,
                           int(turbo.get("rate", 10)), bool(turbo.get("continuous", False)))
             ok += 1

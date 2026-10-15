@@ -54,19 +54,22 @@ def build_layout_packet(layout: str, dpad_params: bytes) -> bytes:
         raise ValueError(f"Unknown layout: {layout}")
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x09, 0x09, 0x01]
-    packet[4:10] = dpad_params[4:10]
+    # Copy only the fields the reply actually carries (length byte = data + 3); older
+    # firmware sends 4 (type, swap, layout, auto on/off), newer adds calibration + macro key.
+    n = max(0, min(6, dpad_params[1] - 3))
+    packet[4:4 + n] = dpad_params[4:4 + n]
     packet[6] = 0x01 if layout == "xbox" else 0x02
     return bytes(packet)
 
 
 def read_dpad_params() -> bytes | None:
     """GetDPadParam (07 03 09 02) reply, or None."""
-    from .transport import open_device, close_device, drain, send_cmd, read_response
+    from .transport import open_device, close_device, drain, send_cmd, read_reply
     fd = open_device()
     try:
         drain(fd)
         send_cmd(fd, bytes([0x07, 0x03, 0x09, 0x02]))
-        return read_response(fd, header=bytes([0x07, 0x09, 0x02]))
+        return read_reply(fd, 0x09, 0x02)
     finally:
         close_device(fd)
 

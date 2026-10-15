@@ -30,8 +30,9 @@ class DeviceError(RuntimeError):
     """Device rejected a write (non-zero status) or never acknowledged it."""
 
 
-def _wait_ack(fd, obj, op, timeout):
-    """Return the status byte of the SET reply 06 04 [obj] [op] [status], or None on timeout."""
+def read_reply(fd, obj, op, timeout=0.5):
+    """Next input report 06 [len] [obj] [op] …, skipping state reports; None on timeout.
+    Match on obj/op only: the length byte differs between firmware versions."""
     deadline = time.time() + timeout
     while time.time() < deadline:
         try:
@@ -40,8 +41,14 @@ def _wait_ack(fd, obj, op, timeout):
             time.sleep(0.005)
             continue
         if len(d) > 4 and d[0] == 0x06 and d[2] == obj and d[3] == op:
-            return d[4]
+            return d
     return None
+
+
+def _wait_ack(fd, obj, op, timeout):
+    """Status byte of the SET reply 06 04 [obj] [op] [status], or None on timeout."""
+    reply = read_reply(fd, obj, op, timeout)
+    return None if reply is None else reply[4]
 
 
 def send_raw_bytes(payload, timeout=0.5):

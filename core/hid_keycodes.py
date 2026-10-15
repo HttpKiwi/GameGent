@@ -159,6 +159,17 @@ def unbind_packet(button_index: int) -> bytes:
     return build_remap_packet(button_index, REPORT_UNBIND, payload)
 
 
+# Factory mappings that differ from "map to itself" (spec §5.7): C1/C2 → View,
+# C3/C4 → Menu, T3 → Capture.
+FACTORY_TARGET = {0x29: 0x0a, 0x2a: 0x0a, 0x2b: 0x0b, 0x2c: 0x0b, 0x28: 0x2d}
+
+
+def reset_packet(button_index: int) -> bytes:
+    """Restore a button's factory mapping. An unmapped button is the joystick type
+    pointing at itself; unbind_packet (vacant) makes the button do nothing."""
+    return controller_packet(button_index, FACTORY_TARGET.get(button_index, button_index))
+
+
 def apply_turbo(remap_packet: bytes, rate_hz: int = 10, continuous: bool = False, turbo: bool = True) -> bytes:
     """Inject toggle/turbo into a SetKeyMapping packet: b11 toggle, b12 turboMode, b13 turboTimes.
 

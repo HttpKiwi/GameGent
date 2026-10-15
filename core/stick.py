@@ -23,6 +23,8 @@ KEYBOARD_ZONE_INDEX = {
 RIGHT_STICK_ZONE_OFFSET = 4
 
 KEYBOARD_ZONE_STRUCT = [0x00, 0x00, 0x01, 0x02, 0x02, 0x00]
+# Outer ring with no key set: keyboard type, count 1, code0 = 0x02 (Left Shift modifier bit),
+# the behaviour captured from the official app. With a key set it is sent like an inner zone.
 KEYBOARD_OVERLAP_STRUCT = [0x00, 0x00, 0x01, 0x02, 0x01, 0x02]
 
 
@@ -163,6 +165,8 @@ def _build_keyboard_sequence(config: StickConfig) -> List[bytes]:
         (KEYBOARD_ZONE_INDEX["overlap_down"], KEYBOARD_OVERLAP_STRUCT, kbd.down_outer),
     ]
     for zone_idx, struct, scancode in zones:
+        if struct is KEYBOARD_OVERLAP_STRUCT and scancode:
+            struct = KEYBOARD_ZONE_STRUCT
         packets.append(build_keyboard_packet(zone_idx + off, struct, scancode))
     return packets
 

@@ -68,9 +68,76 @@ def test_turbo_mode_thresholds():
     assert apply_turbo(base, 15, turbo=False)[12:14] == bytes([0, 1])
 
 
-def test_layout_keeps_other_dpad_fields():
-    reply = bytes([0x06, 0x07, 0x09, 0x02, 1, 3, 1, 1, 1, 0x29]) + bytes(22)
+# Captured from the dongle (fw V0241221A): length byte 7 = 4 data bytes.
+REAL_DPAD_REPLY = bytes.fromhex("06 07 09 02 00 00 01 00 00 00") + bytes(22)
+
+
+def test_layout_keeps_other_dpad_fields_new_firmware():
+    # Hypothetical newer reply: length 9 = 6 data bytes incl. calibration + macro key.
+    reply = bytes([0x06, 0x09, 0x09, 0x02, 1, 3, 1, 1, 1, 0x29]) + bytes(22)
     assert build_layout_packet("switch", reply)[:10] == bytes([0x07, 0x09, 0x09, 0x01, 1, 3, 2, 1, 1, 0x29])
+
+
+def test_layout_with_real_old_firmware_reply():
+    assert build_layout_packet("switch", REAL_DPAD_REPLY)[4:10] == bytes([0, 0, 2, 0, 0, 0])
+    # Only the 4 fields the reply carries are copied; bytes beyond must stay 0.
+    odd = bytes([0x06, 0x07, 0x09, 0x02, 1, 3, 1, 1, 0xEE, 0xEE]) + bytes(22)
+    assert build_layout_packet("xbox", odd)[8:10] == bytes([0, 0])
+
+
+def test_read_reply_ignores_length_byte():
+    import socket
+    from core.transport import read_reply
+    a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    a.setblocking(False)
+    try:
+        for length in (0x07, 0x09):
+            b.send(bytes([0x06, length, 0x09, 0x02, 0, 0, 1]))
+            assert read_reply(a.fileno(), 0x09, 0x02, 0.2)[1] == length
+    finally:
+        a.close()
+        b.close()
+
+
+def test_turbo_round_trips_through_read_decode():
+    from core.hid_keycodes import controller_packet, keyboard_packet
+    from core.read_remap import decode_turbo, _is_native
+    for make in (lambda: controller_packet(0x24, 0x01), lambda: keyboard_packet(0x24, 0x08)):
+        for rate in (5, 12, 20, 40):
+            reply = b"\x06" + apply_turbo(make(), rate, continuous=False)[1:]
+            assert not _is_native(reply), (rate,)
+            assert decode_turbo(reply)["rate"] == rate
+        assert decode_turbo(b"\x06" + apply_turbo(make(), 1, False, turbo=False)[1:]) is None
+
+
+def test_remove_mapping_restores_factory_not_vacant():
+    from core.hid_keycodes import reset_packet, REPORT_CONTROLLER
+    for idx, expected in ((0x24, 0x24), (0x29, 0x0a), (0x2b, 0x0b), (0x28, 0x2d)):
+        p = reset_packet(idx)
+        assert p[14:16] == REPORT_CONTROLLER and p[16] == expected, hex(idx)
+    sent = []
+    orig = apply_config.apply_mapping
+    apply_config.apply_mapping = lambda b, t: sent.append((b, t))
+    try:
+        apply_config._apply_mappings({"key_mappings": {}}, {"key_mappings": {"c1": "controller:a"}})
+    finally:
+        apply_config.apply_mapping = orig
+    assert sent == [("c1", "reset")]
+
+
+def test_wheel_outer_key_configurable():
+    cfg = StickConfig(mode="wheel", keyboard=KeyboardMapping(left_outer=0x2c))
+    pkts = {p[10]: p for p in generate_hardware_stream(cfg, StickConfig()) if p[2:4] == bytes([0x05, 0x01])}
+    assert pkts[0x18][15:18] == bytes([2, 0, 0x2c])          # count 2, no modifier, key
+    assert pkts[0x19][15:18] == bytes([1, 0x02, 0])          # unset: captured Left Shift
+
+
+def test_foreign_host_rejected():
+    from web.app import app
+    c = app.test_client()
+    assert c.get("/api/status", headers={"Host": "evil.example:5000"}).status_code == 403
+    assert c.get("/api/status", headers={"Host": "localhost:5000"}).status_code != 403
+    assert c.get("/api/status", headers={"Host": "[::1]:5000"}).status_code != 403
 
 
 def test_face_leds_skipped_when_absent():
@@ -148,7 +215,7 @@ def test_changed_sections_and_mapping_diff():
         apply_config._apply_mappings(new, old)
     finally:
         apply_config.apply_mapping = orig
-    assert sorted(sent) == [("c1", "unbind"), ("l4", "controller:rb")]
+    assert sorted(sent) == [("c1", "reset"), ("l4", "controller:rb")]
 
 
 def test_autosave_mirrors_active_profile_and_applies_only_changes():

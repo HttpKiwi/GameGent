@@ -5,6 +5,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from urllib.parse import urlsplit
+
 from flask import Flask, jsonify, request, send_from_directory
 
 from core import (
@@ -41,6 +43,14 @@ from core.game_watcher import (
 )
 
 app = Flask(__name__)
+
+
+@app.before_request
+def reject_foreign_host():
+    """Local-only API: refuse other Host headers so a web page can't reach it via DNS rebinding."""
+    host = urlsplit("//" + request.host).hostname
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        return jsonify({"error": "forbidden host"}), 403
 
 # Auto-switch profiles when a linked game process is detected.
 # Skips if `gamegent daemon` (or another host) already holds the watcher lock.

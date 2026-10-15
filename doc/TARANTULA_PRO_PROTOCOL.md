@@ -13,6 +13,7 @@ In the app the Tarantula Pro is model **`T3Pro`**. The wireless dongle is model 
 - Read back on hardware: GET replies for `GetDeviceInfo`, `GetVersion(dongle)`, `GetStickMapping`, `GetStickCurve`, `GetMotionSenseMapping`, `GetMotionSenseCurve`, `GetDPadParam`, `GetTriggerParam`, `GetVibrateParam` and `GetLightParam` all match the §5 layouts.
 - SET replies: every SET tried (`SetStickMapping`, `SetStickCurve`, `SetDPadParam`, `SaveConfigPage`, `SetVibrateParam`, `SetLightParam`, `SetVibrateTest`, `SetMacroStep` clear) replies `06 04 [obj] [op] [status]` within 20–60 ms, status `0` = OK. The device didn't reject a wrong `len` byte. GameGent's `send_raw_bytes` waits for this reply (500 ms) and raises `DeviceError` on a timeout or a non-zero status.
 - On this machine the dongle exposes **one** hidraw node (interface 1). It carries report IDs `01 02 03 06 07`, and both config replies and `06 1a 0a 03` state reports arrive on it. Interface 0 (vendor class `ff/5d/01`) is bound by `xpad` and has no hidraw node, so §1's usage-page split is not needed here.
+- `GetDPadParam` raw reply on `V0241221A`: `06 07 09 02 00 00 01 00 00 00 …`. The length byte is `07` (4 data bytes: type, swap, layout, auto on/off), not `09`, so bytes 8–9 (trigger auto-calibration, macro key) don't exist on this firmware. GameGent matches replies by obj/op, never by length, and copies only as many fields as the reply carries. Not yet captured on `V0250917A`.
 - `GetDeviceInfo` reply: `06 0e 0a 01 | 00 | 02 06 | 12 94 90 5e 5a a0 | 64 | 00`, i.e. fw 2.06 and battery 100.
 - `GetVersion(dongle)` reply bytes 11–14: `02 41 22 1a` = `V0241221A`.
 
@@ -174,6 +175,8 @@ Code encodings:
 - Keyboard: `[modifier bitmask (LCtrl, LShift, LAlt, Win, RCtrl, RShift, RAlt), k1, k2, k3]`, count = 1 + number of keys.
 - Mouse: `[0, 0, scroll (1 up / 0xFF down / 0x80 both), buttons]`, button bits L 1, R 2, M 4, B5 8, B4 0x10.
 - Media: `[0, 0, 0, bits]`: Mute, Vol−, Vol+, MicMute, Play, Prev, Stop, Next.
+
+A button's factory state is "joystick type pointing at itself" (or the §5.7 defaults), **not** Vacant: unbinding disables the button. GameGent's `map <btn> reset` / removing a mapping in the UI restores the factory mapping; `map <btn> unbind` still makes it do nothing.
 
 GameGent's `REPORT_TURBO = 04 04` is actually Media with 4 code bytes. Unmapped = Joystick type with `code0 == mappingKey`. App defaults: C1, C2 → View; C3, C4 → Menu; T3 → Capture.
 
