@@ -1,5 +1,8 @@
 # core/read_remap.py — read button remap configuration from hardware
+from __future__ import annotations
+
 import os
+import time
 
 from .hid_keycodes import (
     CONTROLLER_BUTTON,
@@ -12,14 +15,23 @@ from .hid_keycodes import (
     REPORT_MOUSE,
     REPORT_UNBIND,
 )
-from .transport import open_device, init_session, read_button_remap_register, drain
+from .transport import close_device, open_device, init_session, send_cmd, read_response, drain
 
 # Page gateway observed in GameSir app captures: OUT 07 05 05 02, IN 06 13 05 02
-REMAP_RESPONSE_CLASS = 0x13
-REMAP_RESPONSE_SUBTYPE = 0x05
+REMAP_RESPONSE_HEADER = bytes([0x13, 0x05, 0x02])
+MACRO_RESPONSE_HEADER = bytes([0x13, 0x01, 0x02])
 
-# Native / no custom remap (seen on unmapped face buttons)
+# Native / no custom remap (replaces flag+report at bytes 13–14)
 REPORT_NATIVE = bytes([0x14, 0x01])
+
+# Read response layout matches write packets (report ID 0x06 prefix):
+#   byte 10: button index
+#   bytes 11–12: turbo flags (continuous, turbo mode) when set
+#   byte 13: 0x01 flag, or turbo rate when turbo is on, or start of native 14 01
+#   bytes 14–15: report type (01 01 / 02 02 / 03 04 / 01 02 / 00 00 / …)
+#   bytes 16+: payload
+_REPORT_OFFSET = 14
+_PAYLOAD_OFFSET = 16
 
 REMAP_BUTTON_IDS = sorted(set(CONTROLLER_BUTTON.values()) | set(CONTROLLER_SOURCE.values()))
 
@@ -28,13 +40,6 @@ _CONTROLLER_ID_TO_NAME = {v: k for k, v in CONTROLLER_BUTTON.items()}
 _CONTROLLER_ID_TO_NAME.update({v: k for k, v in CONTROLLER_SOURCE.items()})
 _MOUSE_BIT_TO_NAME = {v: k for k, v in MOUSE_BUTTON.items()}
 _SCROLL_VALUE_TO_NAME = {v: k for k, v in MOUSE_SCROLL.items()}
-
-_KNOWN_REPORTS = (
-    REPORT_CONTROLLER,
-    REPORT_KEYBOARD,
-    REPORT_MOUSE,
-    REPORT_UNBIND,
-)
 
 
 def button_index_to_name(button_index: int) -> str | None:
@@ -49,20 +54,18 @@ def button_index_to_name(button_index: int) -> str | None:
 
 
 def _is_native(data: bytes) -> bool:
-    return REPORT_NATIVE in data[10:20]
+    """Native slot: bytes 13–14 are 14 01 (not a normal flag+report)."""
+    return len(data) > 14 and bytes(data[13:15]) == REPORT_NATIVE
 
 
-def _find_report(data: bytes) -> tuple[bytes, int] | None:
-    """Locate a remap report type marker and the payload offset that follows it."""
-    for offset in range(14, 20):
-        if offset + 1 >= len(data):
-            break
-        report = bytes(data[offset:offset + 2])
-        if report in _KNOWN_REPORTS:
-            return report, offset + 2
-        if report[0] == 0x01 and report[1] in (2, 3):
-            return report, offset + 2
-    return None
+def _report_type(data: bytes) -> bytes | None:
+    if len(data) < _PAYLOAD_OFFSET:
+        return None
+    return bytes(data[_REPORT_OFFSET:_PAYLOAD_OFFSET])
+
+
+def _payload(data: bytes) -> bytes:
+    return data[_PAYLOAD_OFFSET:_PAYLOAD_OFFSET + 16]
 
 
 def _decode_report_payload(report: bytes, payload: bytes) -> str | None:
@@ -70,26 +73,27 @@ def _decode_report_payload(report: bytes, payload: bytes) -> str | None:
         return None
 
     if report == REPORT_CONTROLLER:
-        target_id = payload[0]
+        target_id = payload[0] if payload else 0
         name = _CONTROLLER_ID_TO_NAME.get(target_id)
         return f"controller:{name}" if name else f"controller:0x{target_id:02x}"
 
     if report == REPORT_KEYBOARD:
-        usage = payload[1]
+        usage = payload[1] if len(payload) > 1 else 0
         name = _USAGE_TO_KEY.get(usage)
         return f"key:{name}" if name else f"key:0x{usage:02x}"
 
     if report == REPORT_MOUSE:
-        scroll_val = payload[2]
+        scroll_val = payload[2] if len(payload) > 2 else 0
         if scroll_val in _SCROLL_VALUE_TO_NAME:
             return f"mouse:{_SCROLL_VALUE_TO_NAME[scroll_val]}"
-        bitfield = payload[3]
+        bitfield = payload[3] if len(payload) > 3 else 0
         name = _MOUSE_BIT_TO_NAME.get(bitfield)
         return f"mouse:{name}" if name else f"mouse:0x{bitfield:02x}"
 
+    # Combos: 01 02 / 01 03 (controller), 02 03 / 02 04 (keyboard), etc.
     if report[0] == 0x01 and report[1] in (2, 3):
         count = report[1]
-        keys = [payload[i] for i in range(count) if payload[i] != 0]
+        keys = [payload[i] for i in range(min(count, len(payload))) if payload[i] != 0]
         if keys:
             parts = []
             for key_id in keys:
@@ -97,7 +101,33 @@ def _decode_report_payload(report: bytes, payload: bytes) -> str | None:
                 parts.append(f"controller:{name}")
             return "+".join(parts)
 
+    if report[0] == 0x02 and report[1] >= 3:
+        # keyboard combo: payload [0x00, key, key, ...]
+        keys = [payload[i] for i in range(1, min(report[1], len(payload))) if payload[i] != 0]
+        if keys:
+            parts = []
+            for usage in keys:
+                name = _USAGE_TO_KEY.get(usage, f"0x{usage:02x}")
+                parts.append(f"key:{name}")
+            return "+".join(parts)
+
     return None
+
+
+def decode_turbo(data: bytes) -> dict | None:
+    """Extract turbo flags from a remap read response, if enabled."""
+    if len(data) < 14 or _is_native(data):
+        return None
+    continuous = data[11] == 0x01
+    turbo_on = data[12] == 0x02
+    if not turbo_on and not continuous:
+        return None
+    rate = int(data[13]) if turbo_on else 10
+    return {
+        "rate": rate if turbo_on else 10,
+        "continuous": continuous,
+        "turbo": turbo_on,
+    }
 
 
 def decode_target(data: bytes, button_index: int | None = None) -> str | None:
@@ -108,42 +138,178 @@ def decode_target(data: bytes, button_index: int | None = None) -> str | None:
     if _is_native(data):
         return None
 
-    found = _find_report(data)
-    if not found:
+    report = _report_type(data)
+    if not report:
         return None
 
-    report, payload_offset = found
-    if len(data) <= payload_offset:
+    # Macro / unbind share report 00 00 — caller may resolve macros separately.
+    if report == REPORT_UNBIND:
         return None
 
-    payload = data[payload_offset:payload_offset + 16]
-    target = _decode_report_payload(report, payload)
+    target = _decode_report_payload(report, _payload(data))
     if not target:
         return None
 
-    # GameSir leaves face buttons at identity mappings when unconfigured.
+    # Identity mappings (a→a, r4→r4, screenshot→screenshot) mean "not remapped".
     if button_index is not None:
         source_name = button_index_to_name(button_index)
-        if source_name in CONTROLLER_BUTTON and target == f"controller:{source_name}":
+        if source_name and target == f"controller:{source_name}":
             return None
 
     return target
 
 
+def _request_remap(fd, button_index: int) -> None:
+    cmd = bytes([0x07, 0x05, 0x05, 0x02, 0x00, button_index & 0xFF]) + b"\x00" * 26
+    send_cmd(fd, cmd)
+
+
+def _collect_remap_responses(
+    fd,
+    wanted: set[int] | None = None,
+    timeout: float = 1.2,
+) -> dict[int, bytes]:
+    """Read remap responses, keyed by button index at byte 10.
+
+    The device often returns responses out of order / lagged relative to
+    requests. Never discard a valid remap packet for a different button —
+    buffer by id until we have what we need (or timeout).
+
+    If wanted is None/empty, keep reading until timeout (straggler scoop).
+    """
+    pending: dict[int, bytes] = {}
+    deadline = time.time() + timeout
+    need = set(wanted) if wanted else None
+    while time.time() < deadline:
+        if need is not None and need.issubset(pending):
+            break
+        d = read_response(fd, header=REMAP_RESPONSE_HEADER, timeout=0.12)
+        if not d or len(d) < 11:
+            continue
+        pending[d[10]] = bytes(d)
+    return pending
+
+
 def read_button_mapping(fd, button_index: int) -> bytes | None:
     """Read one button's remap packet. Returns raw response bytes or None."""
-    d = read_button_remap_register(fd, button_index)
-    if not d or len(d) < 18 or d[0] != 0x06:
+    drain(fd)
+    _request_remap(fd, button_index)
+    pending = _collect_remap_responses(fd, {button_index}, timeout=1.0)
+    return pending.get(button_index)
+
+
+def _is_macro_slot(data: bytes) -> bool:
+    """Remap slot uses report 00 00 — may be unbind or macro init."""
+    return not _is_native(data) and _report_type(data) == REPORT_UNBIND
+
+
+def _parse_macro_step(data: bytes) -> dict | None:
+    """Parse one 06 13 01 02 macro step response. Returns None if empty/padding."""
+    if len(data) < 20:
         return None
-    if d[1] != REMAP_RESPONSE_CLASS or d[2] != REMAP_RESPONSE_SUBTYPE or d[3] != 0x02:
+    if data[0] != 0x06 or data[1:4] != MACRO_RESPONSE_HEADER:
         return None
-    return bytes(d)
+    # Empty steps have action bytes cleared (byte 10 == 0).
+    if data[10] == 0:
+        return None
+    # Inactive / no-macro responses often have macro_type 0 and zero body.
+    if data[6] == 0 and data[11] == 0:
+        return None
+
+    target_id = data[12]
+    press_ms = (data[16] << 8) | data[17]
+    release_ms = (data[18] << 8) | data[19]
+    target_name = _CONTROLLER_ID_TO_NAME.get(target_id, f"0x{target_id:02x}")
+    return {
+        "step": data[5],
+        "macro_type": data[6],
+        "loop": bool(data[7]),
+        "target": f"controller:{target_name}",
+        "press_ms": press_ms,
+        "release_ms": release_ms,
+    }
+
+
+def read_macro_steps(fd, button_index: int, max_steps: int = 16) -> list[dict]:
+    """Read macro steps for a button via OUT 07 13 01 02 [btn] [step]."""
+    steps: list[dict] = []
+    for step in range(max_steps):
+        drain(fd)
+        cmd = bytes([0x07, 0x13, 0x01, 0x02, button_index & 0xFF, step]) + b"\x00" * 26
+        send_cmd(fd, cmd)
+        time.sleep(0.04)
+
+        got = None
+        deadline = time.time() + 0.35
+        while time.time() < deadline:
+            d = read_response(fd, timeout=0.08)
+            if not d or len(d) < 20:
+                continue
+            if d[1:4] != MACRO_RESPONSE_HEADER:
+                continue
+            if d[4] != (button_index & 0xFF) or d[5] != step:
+                continue
+            got = bytes(d)
+            break
+
+        if not got:
+            break
+        parsed = _parse_macro_step(got)
+        if not parsed:
+            break
+        steps.append(parsed)
+    return steps
+
+
+def format_macro_target(steps: list[dict]) -> str:
+    """Compact target string for key_mappings, e.g. macro:controller:y+controller:dpad_up."""
+    parts = [s["target"] for s in steps]
+    return "macro:" + "+".join(parts)
 
 
 def read_button_mappings() -> dict[str, str]:
     """Read all remapped buttons from the controller.
 
     Returns {source_name: target_string} matching config key_mappings format.
+    Macros become ``macro:controller:…+controller:…``.
+    """
+    result = read_remap_state()
+    mappings: dict[str, str] = {}
+    for entry in result.values():
+        name = entry.get("name")
+        target = entry.get("target")
+        if name and target:
+            mappings[name] = target
+    return mappings
+
+
+def read_button_mappings_detailed() -> dict:
+    """Read mappings plus turbo_settings (for API sync)."""
+    state = read_remap_state()
+    mappings: dict[str, str] = {}
+    turbo_settings: dict[str, dict] = {}
+    for entry in state.values():
+        name = entry.get("name")
+        if not name:
+            continue
+        if entry.get("target"):
+            mappings[name] = entry["target"]
+        if entry.get("turbo"):
+            turbo = dict(entry["turbo"])
+            turbo["target"] = entry.get("target") or turbo.get("target")
+            turbo_settings[name] = {
+                "target": turbo.get("target") or "",
+                "rate": turbo.get("rate", 10),
+                "continuous": bool(turbo.get("continuous", False)),
+            }
+    return {"key_mappings": mappings, "turbo_settings": turbo_settings}
+
+
+def read_remap_state() -> dict[int, dict]:
+    """Read remap state for every known button (debug / CLI).
+
+    Responses are matched by button id (byte 10), not request order.
+    Macro slots (report 00 00) additionally read step packets.
     """
     fd = open_device()
     try:
@@ -151,51 +317,62 @@ def read_button_mappings() -> dict[str, str]:
         init_session(fd)
         drain(fd)
 
-        mappings: dict[str, str] = {}
+        # Request all remap slots, buffering responses by button id.
         for button_index in REMAP_BUTTON_IDS:
-            data = read_button_mapping(fd, button_index)
-            if not data:
-                drain(fd)
-                continue
+            _request_remap(fd, button_index)
+            time.sleep(0.02)
 
-            source = button_index_to_name(button_index)
-            target = decode_target(data, button_index)
-            if source and target:
-                mappings[source] = target
+        pending = _collect_remap_responses(fd, set(REMAP_BUTTON_IDS), timeout=2.5)
+        # Catch stragglers
+        pending.update(_collect_remap_responses(fd, None, timeout=0.35))
+        # Re-request misses individually
+        missing = [b for b in REMAP_BUTTON_IDS if b not in pending]
+        for button_index in missing:
             drain(fd)
-
-        return mappings
-    finally:
-        os.close(fd)
-
-
-def read_remap_state() -> dict[int, dict]:
-    """Read raw remap state for every known button (debug / CLI)."""
-    fd = open_device()
-    try:
-        drain(fd)
-        init_session(fd)
-        drain(fd)
+            _request_remap(fd, button_index)
+            pending.update(_collect_remap_responses(fd, {button_index}, timeout=0.8))
 
         state: dict[int, dict] = {}
+        macro_candidates: list[int] = []
+
         for button_index in REMAP_BUTTON_IDS:
-            data = read_button_mapping(fd, button_index)
+            data = pending.get(button_index)
+            name = button_index_to_name(button_index) or f"0x{button_index:02x}"
             if not data:
-                drain(fd)
+                state[button_index] = {
+                    "name": name,
+                    "target": None,
+                    "turbo": None,
+                    "raw": None,
+                }
                 continue
 
+            target = decode_target(data, button_index)
+            turbo = decode_turbo(data)
+            if turbo and target:
+                turbo = {**turbo, "target": target}
+
+            if target is None and _is_macro_slot(data):
+                macro_candidates.append(button_index)
+
             state[button_index] = {
-                "name": button_index_to_name(button_index) or f"0x{button_index:02x}",
-                "target": decode_target(data, button_index),
+                "name": name,
+                "target": target,
+                "turbo": turbo,
                 "raw": data.hex(),
             }
-            drain(fd)
+
+        for button_index in macro_candidates:
+            steps = read_macro_steps(fd, button_index)
+            if steps:
+                state[button_index]["target"] = format_macro_target(steps)
+                state[button_index]["macro_steps"] = steps
 
         return state
     finally:
-        os.close(fd)
+        close_device(fd)
 
 
 if __name__ == "__main__":
     import json
-    print(json.dumps(read_button_mappings(), indent=2))
+    print(json.dumps(read_button_mappings_detailed(), indent=2))

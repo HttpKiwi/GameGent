@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { useConfigStore } from '../stores/configStore';
-import { useRemap, useTurbo, useSaveConfig, useReadDeviceMappings } from '../hooks/useApi';
+import { useReadDeviceMappings } from '../hooks/useApi';
 import { SelectField, TextField, NumberField, CheckboxField, SettingCard } from '../components/ui';
 import { ControllerDiagram } from '../components/ControllerDiagram';
 import { BUTTON_OPTIONS } from './buttonOptions';
@@ -17,9 +17,7 @@ const BUTTON_LABELS: Record<string, string> = Object.fromEntries(
 
 export function ButtonsTab() {
   const config = useConfigStore((s) => s.config);
-  const remap = useRemap();
-  const turbo = useTurbo();
-  const saveConfig = useSaveConfig();
+  const setConfig = useConfigStore((s) => s.setConfig);
   const readDeviceMappings = useReadDeviceMappings();
 
   const [button, setButton] = useState<string>('');
@@ -71,15 +69,8 @@ export function ButtonsTab() {
       turbo_settings: newTurboSettings,
     };
 
-    if (target) {
-      await remap.mutateAsync({ button, target });
-    }
-
-    if (turboEnabled) {
-      await turbo.mutateAsync({ button, target: target || 'controller:a', rate, continuous });
-    }
-
-    await saveConfig.mutateAsync(newConfig);
+    // Autosave pushes the changed mapping to the controller and saves the profile.
+    setConfig(newConfig);
   };
 
   const handleDelete = async () => {
@@ -91,8 +82,7 @@ export function ButtonsTab() {
     const newTurboSettings = { ...(config.turbo_settings ?? {}) };
     delete newTurboSettings[button];
 
-    await remap.mutateAsync({ button, target: 'unbind' });
-    await saveConfig.mutateAsync({
+    setConfig({
       ...config,
       key_mappings: newMappings,
       turbo_settings: newTurboSettings,
@@ -105,7 +95,6 @@ export function ButtonsTab() {
   };
 
   const mappings = Object.entries(config.key_mappings ?? {});
-  const isApplying = remap.isPending || turbo.isPending || saveConfig.isPending;
   const isReading = readDeviceMappings.isPending;
 
   const handlePullFromDevice = async (sync: boolean) => {
@@ -188,14 +177,14 @@ export function ButtonsTab() {
               <button
                 className="form-btn"
                 onClick={handleApply}
-                disabled={!button || isApplying}
+                disabled={!button}
               >
-                {isApplying ? 'Applying…' : 'Apply'}
+                Apply
               </button>
               <button
                 className="form-btn form-btn-danger"
                 onClick={handleDelete}
-                disabled={!button || isApplying}
+                disabled={!button}
               >
                 Clear
               </button>
@@ -211,14 +200,14 @@ export function ButtonsTab() {
             <button
               className="form-btn form-btn-secondary"
               onClick={() => handlePullFromDevice(false)}
-              disabled={isReading || isApplying}
+              disabled={isReading}
             >
               {isReading ? 'Reading…' : 'Pull from Device'}
             </button>
             <button
               className="form-btn form-btn-secondary"
               onClick={() => handlePullFromDevice(true)}
-              disabled={isReading || isApplying}
+              disabled={isReading}
               title="Read from controller and save to config file"
             >
               Pull &amp; Save

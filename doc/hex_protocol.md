@@ -59,7 +59,15 @@ Reads a specific register from a configuration page (little-endian register word
 Header: 07 05 05 02 00 [button_index]
 ```
 GameSir remap reads use a **leading zero** before the button index (not LE `[btn] 00`).
-Responses must be matched with header `06 13 05 02` (see `core/read_remap.py`).
+Responses must be matched with header `06 13 05 02` **and button id at byte 10**
+(replies can lag / arrive out of order — see `core/read_remap.py`).
+
+**Macro Step Read**:
+```
+OUT: 07 13 01 02 [button] [step]
+IN:  06 13 01 02 [button] [step] …
+```
+Used when the remap slot report type is `00 00` (macro init / not a simple remap).
 
 **Typed Register Read** (`read_typed_register`):
 ```
@@ -194,7 +202,7 @@ KEYBOARD_ZONE_STRUCT:     [0x00, 0x00, 0x01, 0x02, 0x02, 0x00]
 KEYBOARD_OVERLAP_STRUCT:   [0x00, 0x00, 0x01, 0x02, 0x01, 0x02]
 ```
 
-**Commit Packet**:
+**Save Packet** (SaveConfigPage):
 ```
 07 03 08 03 [28 bytes of 0x00]
 ```
@@ -229,16 +237,16 @@ always:  0x03
 
 **Axis Modes**:
 ```
-global: 0x00
-yaw:    0x01
-roll:   0x02
+yaw:    0x00   (YZ)
+roll:   0x01   (XY)
+global: 0x02   (XYZ)
 ```
 
 **Gyro Geometry Packet** (`build_gyro_geometry`):
 ```
 Header: 07 16 04 01
 Bytes 4-9: 0x00 (padding)
-Byte 10: x_sensitivity (0-100)
+Byte 10: axis_ratio (0-100, 50 = equal)
 Byte 11: deadzone_min (0-100)
 Byte 12: antideadzone_min (0-100)
 Bytes 13-18: curve coords (6 bytes)
@@ -251,24 +259,25 @@ Byte 22: curve_intensity (0-100)
 **Gyro Targeting Packet** (`build_gyro_targeting`):
 ```
 Header: 07 0e 04 03
-Byte 4:  x_sensitivity (0-100)
-Byte 5:  y_sensitivity (0-100)
+Byte 4:  diagonal angle / overlap % (keyboard output)
+Byte 5:  outputTriggerRange (app default 40)
 Byte 6:  output_mode byte
 Byte 7:  motion_mode byte
 Byte 8:  axis_mode byte
 Byte 9:  activate_button (button index)
 Byte 10: activate_method byte
-Bytes 11-12: 0x32 (fixed)
+Byte 11: x_sensitivity (0-100)
+Byte 12: y_sensitivity (0-100)
 Byte 13: 0x01=invert_x, 0x00=normal
 Byte 14: 0x01=invert_y, 0x00=normal
 ```
 
 **Gyro Keyboard Direction Zones**:
 ```
-up:    0x20
-down:  0x21
-left:  0x22
-right: 0x23
+left:  0x20
+right: 0x21
+up:    0x22
+down:  0x23
 ```
 
 **Gyro Keyboard Packet** (via `resolve_gyro_direction_packet`):

@@ -1,6 +1,6 @@
 # core/rumble.py — grip rumble set/fire/read
 import os
-from .transport import send_raw_bytes, open_device, read_typed_register, drain
+from .transport import send_raw_bytes, close_device, open_device, read_typed_register, drain
 
 
 def set_rumble_level(left_pct: int, right_pct: int):
@@ -41,5 +41,5 @@ def read_rumble_level():
         if d and d[1] == 0x09 and d[2] == 0x06 and d[3] == 0x02:
             return (d[4], d[5])
     finally:
-        os.close(fd)
+        close_device(fd)
     return (0, 0)

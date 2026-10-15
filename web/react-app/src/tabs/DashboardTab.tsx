@@ -1,5 +1,4 @@
 import { useConfigStore } from '../stores/configStore';
-import { useLighting, useLayout, useSticks, useSaveConfig } from '../hooks/useApi';
 import { SelectField, RangeSlider, SettingCard } from '../components/ui';
 
 const LIGHTING_MODES = [
@@ -33,10 +32,6 @@ const GYRO_MODE_OPTIONS = [
 export function DashboardTab() {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
-  const lighting = useLighting();
-  const layout = useLayout();
-  const sticks = useSticks();
-  const saveConfig = useSaveConfig();
 
   const lighting_mode = config.lighting_mode ?? 'static';
   const brightness = config.brightness ?? 100;
@@ -45,24 +40,6 @@ export function DashboardTab() {
   const rightStickMode = config.stick_right?.mode ?? 'native';
   const gyroMode = config.gyro?.output_mode ?? 'mouse';
 
-  const handleApply = async () => {
-    await lighting.mutateAsync({ mode: lighting_mode, brightness, speed: 100 });
-    await layout.mutateAsync({ layout: abxyLayout });
-    await sticks.mutateAsync({
-      left: { mode: leftStickMode },
-      right: { mode: rightStickMode },
-    });
-
-    const updated = {
-      ...config,
-      lighting_mode,
-      brightness,
-      layout: abxyLayout,
-      stick_left: { ...config.stick_left, mode: leftStickMode },
-      stick_right: { ...config.stick_right, mode: rightStickMode },
-    };
-    await saveConfig.mutateAsync(updated);
-  };
 
   return (
     <div>
@@ -127,9 +104,6 @@ export function DashboardTab() {
           />
         </SettingCard>
       </div>
-      <button className="save-btn" onClick={handleApply}>
-        Apply Quick Settings
-      </button>
     </div>
   );
 }

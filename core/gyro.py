@@ -1,7 +1,7 @@
 # core/gyro.py — gyro/motion aim config, packet builders, read/write
 import os
 from dataclasses import dataclass
-from .transport import send_raw_bytes, open_device, read_response, drain
+from .transport import send_raw_bytes, close_device, open_device, read_response, drain
 from .hid_keycodes import (
     KEYBOARD_USAGE, MOUSE_BUTTON, MOUSE_SCROLL,
     CONTROLLER_BUTTON,
@@ -27,10 +27,11 @@ class GyroConfig:
     activate_method: str = "hold"
     invert_x: bool = False
     invert_y: bool = False
-    x_sensitivity: int = 50
-    y_sensitivity: int = 50
-    overlap_percent: int = 50
-    mouse_dpi: int = 50
+    x_sensitivity: int = 50          # SetMotionSenseMapping b11 (stickSensitivityX)
+    y_sensitivity: int = 50          # b12 (stickSensitivityY)
+    axis_ratio: int = 50             # SetMotionSenseCurve b10
+    overlap_percent: int = 50        # b4: cross/diagonal angle
+    output_trigger_range: int = 40   # b5 (app default 40)
     deadzone_min: int = 0
     antideadzone_min: int = 0
     deadzone_max: int = 100
@@ -49,8 +50,9 @@ class GyroConfig:
         self.activate_method = self.activate_method.lower() if isinstance(self.activate_method, str) else "hold"
         self.x_sensitivity = max(0, min(100, self.x_sensitivity))
         self.y_sensitivity = max(0, min(100, self.y_sensitivity))
+        self.axis_ratio = max(0, min(100, self.axis_ratio))
         self.overlap_percent = max(0, min(100, self.overlap_percent))
-        self.mouse_dpi = max(0, min(100, self.mouse_dpi))
+        self.output_trigger_range = max(0, min(100, self.output_trigger_range))
         self.deadzone_min = max(0, min(100, self.deadzone_min))
         self.antideadzone_min = max(0, min(100, self.antideadzone_min))
         self.deadzone_max = max(0, min(100, self.deadzone_max))
@@ -65,7 +67,7 @@ def build_gyro_geometry(config: GyroConfig) -> bytes:
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x16, 0x04, 0x01]
     packet[4:10] = [0x00] * 6
-    packet[10] = config.x_sensitivity
+    packet[10] = config.axis_ratio
     packet[11] = config.deadzone_min
     packet[12] = config.antideadzone_min
     preset = CURVE_PRESETS.get(config.curve_preset, CURVE_PRESETS["linear"])
@@ -80,15 +82,15 @@ def build_gyro_geometry(config: GyroConfig) -> bytes:
 def build_gyro_targeting(config: GyroConfig) -> bytes:
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x0e, 0x04, 0x03]
-    packet[4] = config.x_sensitivity
-    packet[5] = config.y_sensitivity
+    packet[4] = config.overlap_percent
+    packet[5] = config.output_trigger_range
     packet[6] = GYRO_OUTPUT_MODES.get(config.output_mode, 0)
     packet[7] = GYRO_MOTION_MODES.get(config.motion_mode, 0)
     packet[8] = GYRO_AXIS_MODES.get(config.axis_mode, 0)
     packet[9] = config.activate_button
     packet[10] = GYRO_METHODS.get(config.activate_method, 0)
-    packet[11] = config.mouse_dpi
-    packet[12] = config.mouse_dpi
+    packet[11] = config.x_sensitivity
+    packet[12] = config.y_sensitivity
     packet[13] = 0x01 if config.invert_x else 0x00
     packet[14] = 0x01 if config.invert_y else 0x00
     return bytes(packet)
@@ -178,7 +180,7 @@ def read_gyro_geometry() -> None | bytes:
         if d and d[1] == 0x16 and d[2] == 0x04 and d[3] == 0x02:
             return d
     finally:
-        os.close(fd)
+        close_device(fd)
     return None
 
 
@@ -194,5 +196,5 @@ def read_gyro_targeting() -> None | bytes:
         if d and d[1] == 0x0e and d[2] == 0x04 and d[3] == 0x04:
             return d
     finally:
-        os.close(fd)
+        close_device(fd)
     return None

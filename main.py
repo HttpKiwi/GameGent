@@ -28,11 +28,20 @@ from core import (
     load_config, save_config,
     read_button_mappings, read_remap_state,
 )
-from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
+from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE
 from core.profiles import (
     list_profiles, save_profile, delete_profile, activate_profile, get_active_profile, load_profile,
 )
 from core.apply_config import apply_config_to_device
+from core.game_watcher import (
+    load_game_rules,
+    get_watcher_status,
+    match_rule,
+    scan_processes,
+    tick as game_watcher_tick,
+    run_watcher_forever,
+    watcher_lock_holder,
+)
 
 
 def cmd_light(args):
@@ -104,27 +113,11 @@ def cmd_trigger(args):
 
 
 def cmd_turbo(args):
-    import os, time
-    from core.remap import resolve_button_index, resolve_target_packet
-    from core.transport import open_device
-
-    btn = resolve_button_index(args.button)
-    remap = resolve_target_packet(btn, args.target)
+    from core.remap import set_turbo
     turbo_enabled = args.rate is not None
     continuous = args.continuous
     rate = args.rate if turbo_enabled else 1
-    turbo = apply_turbo(remap, rate, continuous, turbo=turbo_enabled)
-    enable = turbo_enable_packet(btn)
-    commit = bytearray(32)
-    commit[0:4] = [0x07, 0x03, 0x08, 0x03]
-
-    fd = open_device()
-    try:
-        os.write(fd, turbo); time.sleep(0.03)
-        os.write(fd, enable); time.sleep(0.03)
-        os.write(fd, commit); time.sleep(0.03)
-    finally:
-        os.close(fd)
+    set_turbo(args.button, args.target, args.rate, continuous)
 
     parts = []
     if turbo_enabled: parts.append(f"turbo {rate}Hz")
@@ -138,7 +131,8 @@ def cmd_rumble(args):
         set_rumble_level(args.pct, args.pct if args.right is None else args.right)
         print(f"Rumble level set: left={args.pct}% right={args.right if args.right is not None else args.pct}%")
     if args.fire:
-        l, r = args.fire if args.fire_right is None else (args.fire, args.fire_right)
+        l = args.fire
+        r = args.fire if args.fire_right is None else args.fire_right
         duration = args.duration if args.duration else 500
         print(f"Rumble fire: left={l}% right={r}% for {duration}ms")
         fire_rumble(l, r, duration)
@@ -154,10 +148,11 @@ def cmd_stick(args):
     cfg = StickConfig(
         stick_id=0 if stick == "left" else 1,
         mode=mode,
-        x_sensitivity=100 - args.sens,
-        y_sensitivity=args.sens,
+        axis_ratio=args.ratio,
         overlap_percent=args.overlap,
         mouse_dpi=args.mouse_dpi,
+        invert_x=args.invert_x,
+        invert_y=args.invert_y,
         is_circle=not args.square,
         deadzone_min=args.deadzone_min,
         antideadzone_min=args.antideadzone_min,
@@ -167,7 +162,7 @@ def cmd_stick(args):
         curve_intensity=args.curve_intensity,
     )
 
-    if mode == "keyboard":
+    if mode == "wheel":
         kbd = KeyboardMapping(
             left=args.kbd_left, right=args.kbd_right,
             up=args.kbd_up, down=args.kbd_down,
@@ -197,15 +192,26 @@ def cmd_read_mappings(args):
         print(json.dumps(state, indent=2))
         return
 
-    mappings = read_button_mappings()
+    from core.read_remap import read_button_mappings_detailed
+    detailed = read_button_mappings_detailed()
+    mappings = detailed.get("key_mappings", {})
+    turbo = detailed.get("turbo_settings", {})
     if args.json:
         import json
-        print(json.dumps(mappings, indent=2))
+        print(json.dumps(detailed, indent=2))
     elif not mappings:
         print("No remappings on device")
     else:
         for button, target in sorted(mappings.items()):
-            print(f"{button} -> {target}")
+            extra = ""
+            if button in turbo:
+                t = turbo[button]
+                flags = []
+                if t.get("continuous"):
+                    flags.append("continuous")
+                flags.append(f"{t.get('rate', 10)}Hz")
+                extra = f"  [turbo {' '.join(flags)}]"
+            print(f"{button} -> {target}{extra}")
 
 
 def resolve_gyro_button(value):
@@ -227,10 +233,10 @@ def cmd_gyro(args):
         axis_mode=args.axis,
         activate_method=args.method,
         activate_button=resolve_gyro_button(args.button),
-        x_sensitivity=100 - args.sens,
-        y_sensitivity=args.sens,
+        x_sensitivity=args.sens if args.x_sens is None else args.x_sens,
+        y_sensitivity=args.sens if args.y_sens is None else args.y_sens,
+        axis_ratio=args.ratio,
         overlap_percent=args.overlap,
-        mouse_dpi=args.mouse_dpi,
         deadzone_min=args.deadzone_min,
         deadzone_max=args.deadzone_max,
         antideadzone_min=args.antideadzone_min,
@@ -364,6 +370,74 @@ def cmd_profile(args):
         return
 
 
+def cmd_games(args):
+    action = getattr(args, "games_action", None)
+    if not action:
+        print("Usage: gamegent games {status,list,tick,daemon} …")
+        sys.exit(1)
+
+    if action == "list":
+        rules = load_game_rules()
+        print(f"enabled: {rules.get('enabled')}")
+        print(f"default_profile: {rules.get('default_profile')}")
+        print(f"poll_seconds: {rules.get('poll_seconds')}")
+        for rule in rules.get("rules") or []:
+            match = rule.get("match") or {}
+            procs = ", ".join(match.get("process") or []) or "—"
+            apps = ", ".join(match.get("steam_appid") or []) or "—"
+            print(f"  {rule.get('name')} → profile {rule.get('profile')}")
+            print(f"    process: {procs}")
+            print(f"    steam_appid: {apps}")
+        return
+
+    if action == "status":
+        import json
+        rules = load_game_rules()
+        texts = scan_processes()
+        matched = match_rule(rules.get("rules") or [], texts)
+        status = get_watcher_status()
+        status["watcher_pid"] = watcher_lock_holder()
+        status["running"] = status.get("running") or status["watcher_pid"] is not None
+        if args.json:
+            print(json.dumps({
+                **status,
+                "matched_now": matched,
+            }, indent=2))
+            return
+        pid = status["watcher_pid"]
+        print(f"watcher running: {status['running']}" + (f" (pid {pid})" if pid else ""))
+        print(f"enabled: {status.get('enabled')}")
+        print(f"active profile: {status.get('active_profile')}")
+        print(f"active game: {status.get('active_game')}")
+        print(f"last applied: {status.get('last_applied_profile')}")
+        if status.get("last_error"):
+            print(f"last error: {status['last_error']}")
+        if matched:
+            print(f"matched now: {matched.get('name')} → {matched.get('profile')}")
+        else:
+            print("matched now: (none)")
+        return
+
+    if action == "tick":
+        status = game_watcher_tick(apply=not args.no_apply)
+        print(f"enabled: {status.get('enabled')}")
+        print(f"active game: {status.get('active_game')}")
+        print(f"active profile: {status.get('active_profile')}")
+        print(f"last applied: {status.get('last_applied_profile')}")
+        if status.get("last_error"):
+            print(f"last error: {status['last_error']}")
+        return
+
+    if action == "daemon":
+        run_watcher_forever(foreground=True)
+        return
+
+
+def cmd_daemon(_args):
+    """Dedicated game→profile watcher (no Flask / UI)."""
+    run_watcher_forever(foreground=True)
+
+
 def cmd_status(args):
     import json
     state = read_state()
@@ -374,15 +448,17 @@ def cmd_status(args):
         g = read_gyro_geometry()
         gyro = {}
         if t:
-            gyro["x_sensitivity"] = t[4]
-            gyro["y_sensitivity"] = t[5]
+            gyro["overlap_percent"] = t[4]
+            gyro["output_trigger_range"] = t[5]
+            gyro["x_sensitivity"] = t[11]
+            gyro["y_sensitivity"] = t[12]
             gyro["output_mode"] = t[6]
             gyro["motion_mode"] = t[7]
             gyro["axis"] = t[8]
             gyro["activate_button"] = t[9]
             gyro["method"] = t[10]
         if g:
-            gyro["x_sensitivity"] = g[10]
+            gyro["axis_ratio"] = g[10]
             gyro["deadzone_min"] = g[11]
             gyro["antideadzone_min"] = g[12]
             gyro["curve_coords"] = list(g[13:19])
@@ -613,9 +689,11 @@ def main():
     p = sub.add_parser("stick", help="Configure stick")
     p.add_argument("stick", choices=["left", "right"])
     p.add_argument("mode", choices=list(STICK_MODES.keys()))
-    p.add_argument("--sens", type=int, default=50, help="Sensitivity (0=favors X, 100=favors Y)")
-    p.add_argument("--overlap", type=int, default=50)
+    p.add_argument("--ratio", type=int, default=50, help="X/Y axis ratio (50 = equal)")
+    p.add_argument("--overlap", type=int, default=50, help="Diagonal angle %% (wheel mode)")
     p.add_argument("--mouse-dpi", type=int, default=50)
+    p.add_argument("--invert-x", action="store_true")
+    p.add_argument("--invert-y", action="store_true")
     p.add_argument("--square", action="store_true")
     p.add_argument("--deadzone-min", type=int, default=5)
     p.add_argument("--antideadzone-min", type=int, default=0)
@@ -665,9 +743,11 @@ def main():
     p.add_argument("--method", choices=list(GYRO_METHODS.keys()), default="hold")
     p.add_argument("--axis", choices=list(GYRO_AXIS_MODES.keys()), default="global")
     p.add_argument("--button", default="c1", help="Activate button (name or hex)")
-    p.add_argument("--sens", type=int, default=50, help="Sensitivity (0=favors X, 100=favors Y)")
-    p.add_argument("--mouse-dpi", type=int, default=50, help="Mouse DPI (mouse output mode)")
-    p.add_argument("--overlap", type=int, default=50, help="Overlap threshold (keyboard mode)")
+    p.add_argument("--sens", type=int, default=50, help="Sensitivity, both axes")
+    p.add_argument("--x-sens", type=int, help="X sensitivity (overrides --sens)")
+    p.add_argument("--y-sens", type=int, help="Y sensitivity (overrides --sens)")
+    p.add_argument("--ratio", type=int, default=50, help="X/Y axis ratio (50 = equal)")
+    p.add_argument("--overlap", type=int, default=50, help="Diagonal angle %% (keyboard mode)")
     p.add_argument("--deadzone-min", type=int, default=0)
     p.add_argument("--deadzone-max", type=int, default=100)
     p.add_argument("--antideadzone-min", type=int, default=0)
@@ -727,6 +807,36 @@ def main():
     p_apply.set_defaults(func=cmd_profile)
 
     p.set_defaults(func=cmd_profile)
+
+    # games (auto profile switch)
+    p = sub.add_parser("games", help="Game-linked auto profile switching")
+    g_sub = p.add_subparsers(dest="games_action")
+
+    g_status = g_sub.add_parser("status", help="Show watcher status and current match")
+    g_status.add_argument("--json", action="store_true")
+    g_status.set_defaults(func=cmd_games)
+
+    g_list = g_sub.add_parser("list", help="List game→profile rules")
+    g_list.set_defaults(func=cmd_games)
+
+    g_tick = g_sub.add_parser("tick", help="Run one watcher tick now")
+    g_tick.add_argument("--no-apply", action="store_true", help="Match only; skip hardware apply")
+    g_tick.set_defaults(func=cmd_games)
+
+    g_daemon = g_sub.add_parser(
+        "daemon",
+        help="Run foreground watcher only (no Flask/UI)",
+    )
+    g_daemon.set_defaults(func=cmd_games)
+
+    p.set_defaults(func=cmd_games)
+
+    # daemon (alias for games daemon)
+    p = sub.add_parser(
+        "daemon",
+        help="Run game→profile watcher only (no Flask/UI)",
+    )
+    p.set_defaults(func=cmd_daemon)
 
     # status
     p = sub.add_parser("status", help="Read current controller state")

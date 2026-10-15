@@ -1,5 +1,4 @@
 import { useConfigStore } from '../stores/configStore';
-import { useTriggers, useSaveConfig } from '../hooks/useApi';
 import { SelectField, RangeSlider, SettingCard } from '../components/ui';
 
 const HAIR_MODES = [
@@ -19,44 +18,14 @@ type Side = 'left' | 'right';
 export function TriggersTab() {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
-  const triggers = useTriggers();
-  const saveConfig = useSaveConfig();
 
-  const tl = config.trigger_left ?? {};
-  const tr = config.trigger_right ?? {};
 
-  const handleApply = async () => {
-    await triggers.mutateAsync({
-      hair: tl.hair_mode,
-      hair_begin: tl.hair_trigger_begin,
-      hair_end: tl.hair_trigger_end,
-      dz_begin: tl.deadzone_begin,
-      dz_end: tl.deadzone_end,
-      anti_begin: tl.antideadzone_begin,
-      anti_end: tl.antideadzone_end,
-      curve: tl.curve_preset,
-      curve_intensity: tl.curve_intensity,
-      left_hair: tr.hair_mode,
-      left_hair_begin: tr.hair_trigger_begin,
-      left_hair_end: tr.hair_trigger_end,
-      left_dz_begin: tr.deadzone_begin,
-      left_dz_end: tr.deadzone_end,
-      left_anti_begin: tr.antideadzone_begin,
-      left_anti_end: tr.antideadzone_end,
-      left_curve: tr.curve_preset,
-      left_intensity: tr.curve_intensity,
-    });
-    await saveConfig.mutateAsync(config);
-  };
 
   return (
     <div>
       <h2>Triggers</h2>
       <TriggerSection label="Left Trigger" side="left" config={config} setConfig={setConfig} />
       <TriggerSection label="Right Trigger" side="right" config={config} setConfig={setConfig} />
-      <button className="save-btn" onClick={handleApply}>
-        Apply Triggers
-      </button>
     </div>
   );
 }

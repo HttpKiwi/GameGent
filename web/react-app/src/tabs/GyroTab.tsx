@@ -1,5 +1,4 @@
 import { useConfigStore } from '../stores/configStore';
-import { useGyro, useSaveConfig } from '../hooks/useApi';
 import { SelectField, RangeSlider, CheckboxField, TextField, SettingCard } from '../components/ui';
 import { BUTTON_OPTIONS } from './buttonOptions';
 
@@ -37,8 +36,6 @@ const CURVE_OPTIONS = [
 export function GyroTab() {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
-  const gyro = useGyro();
-  const saveConfig = useSaveConfig();
 
   const g = (config.gyro ?? {}) as Record<string, unknown>;
 
@@ -46,32 +43,6 @@ export function GyroTab() {
     setConfig({ ...config, gyro: { ...g, ...updates } });
   };
 
-  const handleApply = async () => {
-    await gyro.mutateAsync({
-      mode: g.output_mode,
-      motion: g.motion_mode,
-      method: g.activate_method,
-      axis: g.axis_mode,
-      button: g.activate_button,
-      x_sens: g.x_sensitivity,
-      y_sens: g.y_sensitivity,
-      overlap: g.overlap_percent,
-      mouse_dpi: g.mouse_dpi,
-      deadzone_min: g.deadzone_min,
-      deadzone_max: g.deadzone_max,
-      antideadzone_min: g.antideadzone_min,
-      antideadzone_max: g.antideadzone_max,
-      invert_x: g.invert_x,
-      invert_y: g.invert_y,
-      curve: g.curve_preset,
-      curve_intensity: g.curve_intensity,
-      kb_up: g.kb_up,
-      kb_down: g.kb_down,
-      kb_left: g.kb_left,
-      kb_right: g.kb_right,
-    });
-    await saveConfig.mutateAsync(config);
-  };
 
   return (
     <div>
@@ -132,7 +103,14 @@ export function GyroTab() {
             />
           </div>
           <RangeSlider
-            label="Overlap"
+            label="X/Y Ratio (50 = equal)"
+            value={(g.axis_ratio as number) ?? 50}
+            min={0}
+            max={100}
+            onChange={(v) => set({ axis_ratio: v })}
+          />
+          <RangeSlider
+            label="Diagonal Angle"
             value={(g.overlap_percent as number) ?? 50}
             min={0}
             max={100}
@@ -236,21 +214,7 @@ export function GyroTab() {
           </SettingCard>
         )}
 
-        {(g.output_mode as string) === 'mouse' && (
-          <SettingCard title="Mouse DPI">
-            <RangeSlider
-              label="DPI"
-              value={(g.mouse_dpi as number) ?? 50}
-              min={0}
-              max={100}
-              onChange={(v) => set({ mouse_dpi: v })}
-            />
-          </SettingCard>
-        )}
       </div>
-      <button className="save-btn" onClick={handleApply}>
-        Apply Gyro
-      </button>
     </div>
   );
 }

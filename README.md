@@ -80,11 +80,11 @@ python3 main.py led home 200     # same thing
 
 ```bash
 # Modes
-python3 main.py stick left native --circle --deadzone-min 5 --curve linear
-python3 main.py stick right mouse --x-sens 60 --mouse-dpi 75
+python3 main.py stick left native --deadzone-min 5 --curve linear
+python3 main.py stick right mouse --mouse-dpi 75 --ratio 60 --invert-y
 
-# Keyboard mode with WASD
-python3 main.py stick left keyboard --overlap 65 \
+# Wheel (keys) mode with WASD; outer ring = Left Shift
+python3 main.py stick left wheel --overlap 65 \
     --kbd-up 26 --kbd-down 22 --kbd-left 4 --kbd-right 7
 
 # Clone mode
@@ -95,7 +95,7 @@ python3 main.py stick left native --curve expo --curve-intensity 60
 python3 main.py stick left native --curve s-curve --deadzone-min 10 --deadzone-max 80
 ```
 
-Modes: `native | mouse | keyboard | clone`
+Modes: `native | mouse | wheel | clone` (`clone` = output as the other stick)
 Curves: `linear | expo | s-curve`
 
 ### Gyro / Motion Aim
@@ -153,7 +153,7 @@ Identity mappings on face buttons (`a→a`) and native report `14 01` are treate
 
 ```bash
 python3 main.py config --show             # Show full config
-python3 main.py config --set stick_left.mode=keyboard
+python3 main.py config --set stick_left.mode=wheel
 python3 main.py config --get stick_left.deadzone_min
 ```
 
@@ -186,7 +186,9 @@ python3 main.py config --get stick_left.deadzone_min
 ## Software Profiles
 
 Named configs live under `~/.config/gamegent/profiles/` (not GameSir onboard slots).
-The working config remains `~/.config/gamegent/config.json`; activating a profile copies it there and can push settings to the controller.
+The working config remains `~/.config/gamegent/config.json`; activating a profile copies it there and can push settings to the controller — **including lighting mode, panel color, and face/home LEDs**.
+
+Workflow for per-game colors: set Lighting / Face LEDs → open Profiles → **Save colors & settings** on that profile. Auto-switch (or Activate) pushes those colors with the remaps.
 
 ```bash
 gamegent profile list
@@ -198,6 +200,37 @@ gamegent profile delete FPS
 ```
 
 In the UI: **Profiles** tab, plus a header profile switcher once you have at least one saved.
+
+### Game auto-switch
+
+Rules live in `~/.config/gamegent/game_rules.json`. A dedicated daemon can watch
+for games and activate profiles **without** Flask or the UI:
+
+```bash
+gamegent daemon                  # foreground
+# or
+systemctl --user enable --now gamegent-daemon
+```
+
+Only one watcher runs at a time (lock file). Prefer the daemon for always-on
+switching; `gamegent app` / `serve` will skip starting their embedded watcher if
+the daemon already holds the lock.
+
+Example (one Souls profile for several games):
+
+1. Launch Elden Ring → **Profiles → New profile from running game…**
+2. Pick **ELDEN RING** under Steam games (binds AppId `1245620`, not a flaky exe)
+3. Name the profile as you like → create
+4. For Souls-style sharing: on that profile, **Add game…** for DS1 / DS2 / DS3 (Steam rows when available)
+
+```bash
+gamegent games list
+gamegent games status
+gamegent games tick                 # force one match/apply now
+gamegent daemon                     # watch forever (profile switches only)
+```
+
+Steam AppIds are matched before process names (better for Proton / Easy Anti-Cheat). First matching rule wins. With no match, the last profile stays active unless you set a default profile.
 
 ## Known Limitations
 

@@ -18,16 +18,19 @@ class TriggerConfig:
     curve_intensity: int | None = 50
 
     def __post_init__(self):
+        def pct(v, default):
+            return max(0, min(100, default if v is None else v))
+
         self.trigger_id = max(0, min(1, self.trigger_id or 0))
         self.hair_mode = (self.hair_mode or "off").lower()
-        self.deadzone_begin = max(0, min(100, self.deadzone_begin or 0))
-        self.deadzone_end = max(0, min(100, self.deadzone_end or 100))
-        self.antideadzone_begin = max(0, min(100, self.antideadzone_begin or 0))
-        self.antideadzone_end = max(0, min(100, self.antideadzone_end or 100))
+        self.deadzone_begin = pct(self.deadzone_begin, 0)
+        self.deadzone_end = pct(self.deadzone_end, 100)
+        self.antideadzone_begin = pct(self.antideadzone_begin, 0)
+        self.antideadzone_end = pct(self.antideadzone_end, 100)
         self.curve_preset = (self.curve_preset or "linear").lower().replace("_", "-")
         if self.curve_preset not in CURVE_PRESETS:
             self.curve_preset = "linear"
-        self.curve_intensity = max(0, min(100, self.curve_intensity or 50))
+        self.curve_intensity = pct(self.curve_intensity, 50)
         if self.hair_trigger_begin is not None:
             self.hair_trigger_begin = max(0, min(100, self.hair_trigger_begin))
         if self.hair_trigger_end is not None:

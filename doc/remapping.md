@@ -33,18 +33,18 @@ python3 main.py color 0          # Red (hue 0-360°)
 
 ```bash
 # Standard modes
-python3 main.py stick left native --circle --deadzone-min 5 --curve linear
-python3 main.py stick right mouse --x-sens 60 --mouse-dpi 75
+python3 main.py stick left native --deadzone-min 5 --curve linear
+python3 main.py stick right mouse --mouse-dpi 75 --ratio 60 --invert-y
 
-# Keyboard mode with WASD
-python3 main.py stick left keyboard --overlap 65 \
+# Wheel (keys) mode with WASD; outer ring = Left Shift
+python3 main.py stick left wheel --overlap 65 \
     --kbd-up 26 --kbd-down 22 --kbd-left 4 --kbd-right 7
 
 # Clone mode
 python3 main.py stick left clone
 ```
 
-Modes: `native | mouse | keyboard | clone`
+Modes: `native | mouse | wheel | clone` (`clone` = output as the other stick)
 Curves: `linear | expo | s-curve` with `--curve-intensity`
 
 ### Gyro / Motion Aim
@@ -96,7 +96,7 @@ Targets: `key:X`, `controller:X`, `mouse:X`, `unbind`
 
 ```bash
 python3 main.py config --show             # Show full config
-python3 main.py config --set stick_left.mode=keyboard
+python3 main.py config --set stick_left.mode=wheel
 ```
 
 ### Status
@@ -187,18 +187,25 @@ Linux hidraw response layout (verified against live device + PCAP):
 |--------|---------|
 | 0 | Report ID `0x06` |
 | 1–3 | `13 05 02` (remap response header) |
-| 4 or 10 | Button index (layout varies by padding; GameGent matches either) |
-| mid-packet | Report type `01 01` / `02 02` / `03 04` / `00 00`, or native `14 01` |
-| payload | Same 16-byte payload shape as write packets |
+| 10 | Button index (match responses by this — device replies can lag / reorder) |
+| 11–12 | Turbo flags (`continuous`, `turbo mode`) when set |
+| 13 | `0x01` flag, turbo rate when turbo on, or start of native `14 01` |
+| 14–15 | Report type `01 01` / `02 02` / `03 04` / `01 02` / `00 00`, or native continues |
+| 16+ | Payload (same shape as write packets) |
 
 Decode rules used by `core/read_remap.py`:
-- `14 01` → native / not remapped → omit from output
-- Face-button identity (`a→a`, `y→y`, …) → treat as unmapped
+- Match each IN packet to the button in **byte 10** (do not assume request order)
+- `14 01` at bytes 13–14 → native / not remapped → omit
+- Identity (`a→a`, `r4→r4`, …) → treat as unmapped
 - `01 01` + target id → `controller:…`
 - `02 02` / `03 04` → keyboard / mouse targets
+- `01 02` / `01 03` → combo (`controller:a+controller:b`)
+- Report `00 00` → probe macro steps via `OUT 07 13 01 02 [btn] [step]` → `IN 06 13 01 02 …`
+  - Valid steps become `macro:controller:y+controller:dpad_up`
+- Turbo flags (bytes 11–13) → `turbo_settings` on API pull
 
 CLI: `gamegent read-mappings [--json|--raw]`  
-API: `POST /api/mappings/read` `{ "sync": false }` → `{ "key_mappings": {…} }` (503 if dongle missing)
+API: `POST /api/mappings/read` `{ "sync": false }` → `{ "key_mappings": {…}, "turbo_settings": {…} }` (503 if dongle missing)
 
 ## HID Keycode Reference
 
@@ -230,25 +237,26 @@ Common scancodes (full table in `core/hid_keycodes.py`):
 
 Layout B (mouse/stick mode):
 ```
-byte 4:  x_sensitivity
-byte 5:  y_sensitivity
-byte 6:  method (0x04 = enabled, 0x00 = off)
+byte 4:  diagonal angle / overlap %
+byte 5:  outputTriggerRange (app default 40)
+byte 6:  output (0 off, 1 left_stick, 2 right_stick, 3 keyboard, 4 mouse)
 byte 7:  motion (0x00 = aim, 0x01 = tilt)
-byte 8:  output (0x00 = mouse, 0x01 = right_stick, 0x02 = left_stick)
+byte 8:  axis (0 = yaw, 1 = roll, 2 = global)
 byte 9:  activate button
-byte 10: axis (0x02 = yaw, 0x01 = roll, 0x00 = global/disable)
-byte 11-12: dpi (0x32 0x32)
+byte 10: method (0 off, 1 press, 2 hold, 3 always)
+byte 11: x sensitivity
+byte 12: y sensitivity
 byte 13: invert X (0x01 = on)
 byte 14: invert Y (0x01 = on)
 ```
 
-Layout A (keyboard mode): byte 6 = 0x03, byte 8 = 0x00, byte 4 = overlap%
+Full field reference: `doc/TARANTULA_PRO_PROTOCOL.md`.
 
 ### Geometry Packet (`07 16 04 01`)
 
 ```
 byte 4-9:  reserved
-byte 10:   x_sensitivity
+byte 10:   axis_ratio (50 = equal)
 byte 11:   deadzone_min
 byte 12:   antideadzone_min
 byte 13-18: curve coords (6 bytes)
@@ -270,11 +278,11 @@ Color: `07 10 07 03 04 [hue_byte] [sat] [light]`
 
 ### Stick Packets
 
-Targeting: `07 0f 02 03 [stick_id] [x_sens] [y_sens] [0x50] [00 00] [mode] [0x01] [dpi_x] [dpi_y]`
-Geometry: `07 18 02 01 [7b offset] [circle] [0x32] [dz_min] [anti_min] [6b curve] [dz_max] [anti_max] [curve_type] [intensity]`
+Mapping: `07 0f 02 03 [stick] [angle] [0x28] [0x50] [invX] [invY] [mode] [0x01] [dpi_x] [dpi_y] [invX] [invY]`
+Curve: `07 18 02 01 [stick] [page] [key] [trigger] [h s v] [circle] [axis_ratio] [dz_min] [anti_min] [6b curve] [dz_max] [anti_max] [curve_type] [intensity]`
 
 ## Known Limitations
 
-- Onboard remap changes have no USB event; clients must poll reads
+- The device pushes `06 05 0a 0d [mask]` when config changes on the controller (not used yet; the UI still polls)
 - GameSir onboard profile slots are not implemented; use GameGent software profiles (`gamegent profile …`)
 - D-pad/trigger advanced profile tooling may still be incomplete vs GameSir app
