@@ -208,3 +208,12 @@ def autosave_config(config: dict, *, expected_profile: str | None = None) -> dic
     previous = load_config()
     active = save_working_config(config, expected_profile=expected_profile)
     return {"profile": active, "applied": apply_config_to_device(config, previous=previous)}
+
+
+def reset_config(sections: list[str] | None = None) -> dict:
+    """Factory-reset sections (default all) of the working config; saved to the active profile
+    and pushed to the controller like any other edit. Returns {config, profile, applied}."""
+    from .defaults import reset_sections
+
+    config = reset_sections(load_config(), sections)
+    return {"config": config, **autosave_config(config)}

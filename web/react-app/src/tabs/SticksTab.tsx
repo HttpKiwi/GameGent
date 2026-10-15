@@ -1,5 +1,7 @@
 import { useConfigStore } from '../stores/configStore';
-import { SelectField, RangeSlider, SettingCard, CheckboxField } from '../components/ui';
+import { ResetButton } from '../components/ResetButton';
+import { CurveCard } from '../components/CurveCard';
+import { SelectField, RangeSlider, SettingCard, CheckboxField, TextField } from '../components/ui';
 
 const STICK_MODES = [
   { value: 'native', label: 'Native' },
@@ -8,15 +10,17 @@ const STICK_MODES = [
   { value: 'clone', label: 'Clone' },
 ];
 
+const WHEEL_KEYS = [
+  { id: 'up', label: 'Up', fallback: 'key:w' },
+  { id: 'down', label: 'Down', fallback: 'key:s' },
+  { id: 'left', label: 'Left', fallback: 'key:a' },
+  { id: 'right', label: 'Right', fallback: 'key:d' },
+  { id: 'outline', label: 'Outer ring', fallback: 'key:left_shift' },
+];
+
 const SHAPE_OPTIONS = [
   { value: 'circle', label: 'Circle' },
   { value: 'square', label: 'Square' },
-];
-
-const CURVE_OPTIONS = [
-  { value: 'linear', label: 'Linear' },
-  { value: 'expo', label: 'Expo' },
-  { value: 's-curve', label: 'S-Curve' },
 ];
 
 type Side = 'left' | 'right';
@@ -36,6 +40,7 @@ export function SticksTab() {
   return (
     <div>
       <h2>Sticks</h2>
+      <ResetButton sections={['sticks']} what="sticks" />
       <StickSection label="Left Stick" side="left" config={config} setConfig={setConfig} />
       <StickSection label="Right Stick" side="right" config={config} setConfig={setConfig} />
     </div>
@@ -56,6 +61,7 @@ function StickSection({
   const key = side === 'left' ? 'stick_left' : 'stick_right';
   const s = (config[key] ?? {}) as Record<string, unknown>;
   const shape = s.is_circle ? 'circle' : 'square';
+  const kb = (s.keyboard ?? {}) as Record<string, string | number>;
 
   const set = (updates: Record<string, unknown>) => {
     setConfig({ ...config, [key]: { ...s, ...updates } });
@@ -113,6 +119,26 @@ function StickSection({
           </SettingCard>
         )}
 
+        {(s.mode as string) === 'wheel' && (
+          <SettingCard title="Wheel Keys" span={2}>
+            <div className="keyboard-targets">
+              {WHEEL_KEYS.map(({ id, label, fallback }) => (
+                <TextField
+                  key={id}
+                  label={label}
+                  value={String(kb[id] || fallback)}
+                  placeholder={fallback}
+                  onChange={(v) => set({ keyboard: { ...kb, [id]: v } })}
+                />
+              ))}
+            </div>
+            <p className="hint">
+              Any target: key:ctrl+a, mouse:left_click, controller:a, media:play, or none. The outer ring uses one
+              target for all four directions.
+            </p>
+          </SettingCard>
+        )}
+
         {(s.mode as string) === 'mouse' && (
           <SettingCard title="Mouse DPI" span={2}>
             <RangeSlider
@@ -162,21 +188,7 @@ function StickSection({
           </div>
         </SettingCard>
 
-        <SettingCard title="Curve">
-          <SelectField
-            label="Preset"
-            value={(s.curve_preset as string) ?? 'linear'}
-            options={CURVE_OPTIONS}
-            onChange={(v) => set({ curve_preset: v })}
-          />
-          <RangeSlider
-            label="Intensity"
-            value={(s.curve_intensity as number) ?? 50}
-            min={0}
-            max={100}
-            onChange={(v) => set({ curve_intensity: v })}
-          />
-        </SettingCard>
+        <CurveCard value={s} onChange={set} />
       </div>
     </div>
   );

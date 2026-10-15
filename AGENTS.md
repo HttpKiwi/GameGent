@@ -35,6 +35,7 @@ gamegent app
 - `GET/POST /api/profiles`, `POST /api/profiles/activate`, `DELETE /api/profiles/<name>` — software profiles (`core/profiles.py`)
 - `GET/POST /api/game-rules`, `GET /api/game-rules/status`, `GET /api/game-rules/processes` — game→profile auto-switch + process picker (`core/game_watcher.py`)
 - `POST /api/config/apply` — push working config to hardware (`core/apply_config.py`)
+- `GET /api/device` — battery, firmware, MAC (`core/device_info.py`); `POST /api/reset` — factory-reset config sections (`core/defaults.py`)
 - `POST /api/config/autosave` — UI edits: save working config **and active profile**, push only changed sections (`core/profiles.py:autosave_config`); 409 if the active profile changed since the client loaded it. `POST /api/config` also mirrors into the active profile.
 - UI polls status (~2s) and mappings (~4s) while connected; skips overwrite if config is dirty
 - Game watcher runs in Flask (serve/app) **or** standalone `gamegent daemon` (lock-shared; only one at a time)

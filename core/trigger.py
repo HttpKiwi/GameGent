@@ -1,21 +1,22 @@
 # core/trigger.py — trigger config (deadzones, hair trigger, curves)
 from dataclasses import dataclass
 from .transport import send_raw_bytes
-from .stick import CURVE_PRESETS
+from .stick import CURVE_PRESETS, curve_coords
 
 
 @dataclass
 class TriggerConfig:
     trigger_id: int = 0
     hair_mode: str | None = "off"
-    hair_trigger_begin: int | None = None   # None = use trigger default (10 for left, 20 for right)
-    hair_trigger_end: int | None = None     # None = use trigger default (30 for left, 5 for right)
+    hair_trigger_begin: int | None = None   # None = official default (10)
+    hair_trigger_end: int | None = None     # None = official default (20)
     deadzone_begin: int | None = 0
-    deadzone_end: int | None = 100
+    deadzone_end: int | None = 95       # official default
     antideadzone_begin: int | None = 0
     antideadzone_end: int | None = 100
     curve_preset: str | None = "linear"
-    curve_intensity: int | None = 50
+    curve_intensity: int | None = 100
+    curve_points: list | None = None
 
     def __post_init__(self):
         def pct(v, default):
@@ -24,13 +25,13 @@ class TriggerConfig:
         self.trigger_id = max(0, min(1, self.trigger_id or 0))
         self.hair_mode = (self.hair_mode or "off").lower()
         self.deadzone_begin = pct(self.deadzone_begin, 0)
-        self.deadzone_end = pct(self.deadzone_end, 100)
+        self.deadzone_end = pct(self.deadzone_end, 95)
         self.antideadzone_begin = pct(self.antideadzone_begin, 0)
         self.antideadzone_end = pct(self.antideadzone_end, 100)
         self.curve_preset = (self.curve_preset or "linear").lower().replace("_", "-")
         if self.curve_preset not in CURVE_PRESETS:
             self.curve_preset = "linear"
-        self.curve_intensity = pct(self.curve_intensity, 50)
+        self.curve_intensity = pct(self.curve_intensity, 100)
         if self.hair_trigger_begin is not None:
             self.hair_trigger_begin = max(0, min(100, self.hair_trigger_begin))
         if self.hair_trigger_end is not None:
@@ -47,17 +48,15 @@ def build_trigger_packet(config: TriggerConfig) -> bytes:
     packet[4] = config.trigger_id & 1
     packet[5] = HAIR_MODES.get(config.hair_mode, 0)
 
-    # Hair trigger begin/end (default per trigger)
-    defaults = {0: (0x0a, 0x1e), 1: (0x14, 0x05)}
-    c6, c7 = defaults.get(config.trigger_id, (0x0a, 0x1e))
-    packet[6] = config.hair_trigger_begin if config.hair_trigger_begin is not None else c6
-    packet[7] = config.hair_trigger_end if config.hair_trigger_end is not None else c7
+    # Hair trigger begin/end; official defaults 10 / 20 for both triggers
+    packet[6] = config.hair_trigger_begin if config.hair_trigger_begin is not None else 10
+    packet[7] = config.hair_trigger_end if config.hair_trigger_end is not None else 20
 
     packet[8] = config.deadzone_begin
     packet[9] = config.antideadzone_begin
 
     preset = CURVE_PRESETS.get(config.curve_preset, CURVE_PRESETS["linear"])
-    packet[10:16] = preset["coords"]
+    packet[10:16] = curve_coords(config.curve_preset, config.curve_points)
 
     packet[16] = config.deadzone_end
     packet[17] = config.antideadzone_end

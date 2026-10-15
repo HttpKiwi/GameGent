@@ -26,11 +26,12 @@ from core import (
 )
 from core.read_remap import read_button_mappings_detailed
 from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE
-from core.remap import set_turbo
+from core.remap import set_turbo, parse_macro_step
 from core.transport import find_dongle_path
+from core.device_info import read_device_info
 from core.profiles import (
     list_profiles, save_profile, delete_profile, activate_profile, get_active_profile,
-    save_working_config, autosave_config, ProfileChanged,
+    save_working_config, autosave_config, reset_config, ProfileChanged,
 )
 from core.apply_config import apply_config_to_device
 from core.game_watcher import (
@@ -95,6 +96,17 @@ def device_status():
     return jsonify({'connected': path is not None, 'path': path})
 
 
+@app.route('/api/device', methods=['GET'])
+def get_device_info():
+    """Battery, charging state, controller/dongle firmware, MAC."""
+    if not find_dongle_path():
+        return jsonify({'error': 'GameSir Dongle not found'}), 503
+    try:
+        return jsonify(read_device_info())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/gamepad', methods=['GET'])
 def gamepad_state():
     """Live Linux joystick state for the in-app tester.
@@ -141,6 +153,18 @@ def autosave_config_endpoint():
         return jsonify({'success': True, **autosave_config(data['config'], expected_profile=data.get('profile'))})
     except ProfileChanged as e:
         return jsonify({'error': 'active profile changed', 'active': str(e.args[0])}), 409
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/reset', methods=['POST'])
+def reset_endpoint():
+    """Factory-reset config sections: {sections: [sticks|triggers|gyro|mappings|lighting|rumble|all]}."""
+    try:
+        data = request.json or {}
+        return jsonify({'success': True, **reset_config(data.get('sections'))})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -399,120 +423,44 @@ def set_trigger_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
+def _stick_from_request(stick_id: int, d: dict) -> StickConfig:
+    cfg = StickConfig(
+        stick_id=stick_id,
+        mode=d.get('mode', 'native'),
+        axis_ratio=d.get('axis_ratio', d.get('y_sens', 50)),
+        overlap_percent=d.get('overlap', 50),
+        mouse_dpi=d.get('mouse_dpi', 50),
+        invert_x=d.get('invert_x', False),
+        invert_y=d.get('invert_y', False),
+        is_circle=not d.get('square', False),
+        deadzone_min=d.get('deadzone_min', 5),
+        antideadzone_min=d.get('antideadzone_min', 0),
+        deadzone_max=d.get('deadzone_max', 100),
+        antideadzone_max=d.get('antideadzone_max', 100),
+        curve_preset=d.get('curve', 'linear'),
+        curve_intensity=d.get('curve_intensity', 100),
+        curve_points=d.get('curve_points'),
+    )
+    if isinstance(d.get('keyboard'), dict):
+        known = KeyboardMapping.__dataclass_fields__
+        cfg.keyboard = KeyboardMapping(**{k: v for k, v in d['keyboard'].items() if k in known})
+    return cfg
+
+
 @app.route('/api/stick', methods=['POST'])
 def set_stick_endpoint():
-    """Configure stick."""
+    """Configure one stick ({stick, ...}) or both ({left, right})."""
     try:
         data = request.json
-        
-        # Support both single stick and dual stick configuration
         if 'left' in data and 'right' in data:
-            # Dual stick configuration
-            left_data = data['left']
-            right_data = data['right']
-
-            left_cfg = StickConfig(
-                stick_id=0,
-                mode=left_data.get('mode', 'native'),
-                axis_ratio=left_data.get('axis_ratio', left_data.get('y_sens', 50)),
-                overlap_percent=left_data.get('overlap', 50),
-                mouse_dpi=left_data.get('mouse_dpi', 50),
-                invert_x=left_data.get('invert_x', False),
-                invert_y=left_data.get('invert_y', False),
-                is_circle=not left_data.get('square', False),
-                deadzone_min=left_data.get('deadzone_min', 5),
-                antideadzone_min=left_data.get('antideadzone_min', 0),
-                deadzone_max=left_data.get('deadzone_max', 100),
-                antideadzone_max=left_data.get('antideadzone_max', 100),
-                curve_preset=left_data.get('curve', 'linear'),
-                curve_intensity=left_data.get('curve_intensity', 50),
-            )
-            
-            right_cfg = StickConfig(
-                stick_id=1,
-                mode=right_data.get('mode', 'native'),
-                axis_ratio=right_data.get('axis_ratio', right_data.get('y_sens', 50)),
-                overlap_percent=right_data.get('overlap', 50),
-                mouse_dpi=right_data.get('mouse_dpi', 50),
-                invert_x=right_data.get('invert_x', False),
-                invert_y=right_data.get('invert_y', False),
-                is_circle=not right_data.get('square', False),
-                deadzone_min=right_data.get('deadzone_min', 5),
-                antideadzone_min=right_data.get('antideadzone_min', 0),
-                deadzone_max=right_data.get('deadzone_max', 100),
-                antideadzone_max=right_data.get('antideadzone_max', 100),
-                curve_preset=right_data.get('curve', 'linear'),
-                curve_intensity=right_data.get('curve_intensity', 50),
-            )
-            
-            if left_cfg.mode == 'wheel':
-                kbd = KeyboardMapping(
-                    left=left_data.get('kbd_left', 0x04),
-                    right=left_data.get('kbd_right', 0x07),
-                    up=left_data.get('kbd_up', 0x1a),
-                    down=left_data.get('kbd_down', 0x16),
-                    overlap_left=left_data.get('kbd_ol_left', 1),
-                    overlap_right=left_data.get('kbd_ol_right', 1),
-                    overlap_up=left_data.get('kbd_ol_up', 1),
-                    overlap_down=left_data.get('kbd_ol_down', 1),
-                )
-                left_cfg.keyboard = kbd
-            
-            if right_cfg.mode == 'wheel':
-                kbd = KeyboardMapping(
-                    left=right_data.get('kbd_left', 0x04),
-                    right=right_data.get('kbd_right', 0x07),
-                    up=right_data.get('kbd_up', 0x1a),
-                    down=right_data.get('kbd_down', 0x16),
-                    overlap_left=right_data.get('kbd_ol_left', 1),
-                    overlap_right=right_data.get('kbd_ol_right', 1),
-                    overlap_up=right_data.get('kbd_ol_up', 1),
-                    overlap_down=right_data.get('kbd_ol_down', 1),
-                )
-                right_cfg.keyboard = kbd
-            
-            set_stick_config(left_cfg, right_cfg)
+            left_cfg = _stick_from_request(0, data['left'])
+            right_cfg = _stick_from_request(1, data['right'])
         else:
-            # Single stick configuration (legacy support)
             stick = data.get('stick', 'left')
-            mode = data.get('mode', 'native')
-            
-            cfg = StickConfig(
-                stick_id=0 if stick == 'left' else 1,
-                mode=mode,
-                axis_ratio=data.get('axis_ratio', data.get('y_sens', 50)),
-                overlap_percent=data.get('overlap', 50),
-                mouse_dpi=data.get('mouse_dpi', 50),
-                invert_x=data.get('invert_x', False),
-                invert_y=data.get('invert_y', False),
-                is_circle=not data.get('square', False),
-                deadzone_min=data.get('deadzone_min', 5),
-                antideadzone_min=data.get('antideadzone_min', 0),
-                deadzone_max=data.get('deadzone_max', 100),
-                antideadzone_max=data.get('antideadzone_max', 100),
-                curve_preset=data.get('curve', 'linear'),
-                curve_intensity=data.get('curve_intensity', 50),
-            )
-            
-            if cfg.mode == 'wheel':
-                kbd = KeyboardMapping(
-                    left=data.get('kbd_left', 0x04),
-                    right=data.get('kbd_right', 0x07),
-                    up=data.get('kbd_up', 0x1a),
-                    down=data.get('kbd_down', 0x16),
-                    overlap_left=data.get('kbd_ol_left', 1),
-                    overlap_right=data.get('kbd_ol_right', 1),
-                    overlap_up=data.get('kbd_ol_up', 1),
-                    overlap_down=data.get('kbd_ol_down', 1),
-                )
-                cfg.keyboard = kbd
-            
+            cfg = _stick_from_request(0 if stick == 'left' else 1, data)
             other = StickConfig(stick_id=1 if stick == 'left' else 0, mode='native')
-            left_cfg = cfg if stick == 'left' else other
-            right_cfg = cfg if stick == 'right' else other
-            
-            set_stick_config(left_cfg, right_cfg)
-        
+            left_cfg, right_cfg = (cfg, other) if stick == 'left' else (other, cfg)
+        set_stick_config(left_cfg, right_cfg)
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -634,14 +582,7 @@ def set_macro_endpoint():
         hold = data.get('hold', False)
         loop = data.get('loop', False)
         
-        parsed_steps = []
-        for spec in steps:
-            parts = spec.split(':')
-            if len(parts) != 3:
-                return jsonify({'error': f'Invalid step format: {spec}'}), 400
-            btn, press, release = parts
-            parsed_steps.append((btn, int(press), int(release)))
-        
+        parsed_steps = [parse_macro_step(spec) for spec in steps]
         macro_type = 0x02 if hold else 0x01
         apply_macro(button, parsed_steps, macro_type=macro_type, loop=loop)
         return jsonify({'success': True})

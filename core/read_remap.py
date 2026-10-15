@@ -1,7 +1,6 @@
 # core/read_remap.py — read button remap configuration from hardware
 from __future__ import annotations
 
-import os
 import time
 
 from .hid_keycodes import (
@@ -10,11 +9,9 @@ from .hid_keycodes import (
     KEYBOARD_USAGE,
     MOUSE_BUTTON,
     MOUSE_SCROLL,
-    REPORT_CONTROLLER,
-    REPORT_KEYBOARD,
-    REPORT_MOUSE,
     REPORT_UNBIND,
 )
+from .targets import decode_target as decode_report_target
 from .transport import close_device, open_device, init_session, send_cmd, read_response, drain
 
 # Page gateway observed in GameSir app captures: OUT 07 05 05 02, IN 06 13 05 02
@@ -75,47 +72,7 @@ def _payload(data: bytes) -> bytes:
 def _decode_report_payload(report: bytes, payload: bytes) -> str | None:
     if report in (REPORT_UNBIND, REPORT_NATIVE):
         return None
-
-    if report == REPORT_CONTROLLER:
-        target_id = payload[0] if payload else 0
-        name = _CONTROLLER_ID_TO_NAME.get(target_id)
-        return f"controller:{name}" if name else f"controller:0x{target_id:02x}"
-
-    if report == REPORT_KEYBOARD:
-        usage = payload[1] if len(payload) > 1 else 0
-        name = _USAGE_TO_KEY.get(usage)
-        return f"key:{name}" if name else f"key:0x{usage:02x}"
-
-    if report == REPORT_MOUSE:
-        scroll_val = payload[2] if len(payload) > 2 else 0
-        if scroll_val in _SCROLL_VALUE_TO_NAME:
-            return f"mouse:{_SCROLL_VALUE_TO_NAME[scroll_val]}"
-        bitfield = payload[3] if len(payload) > 3 else 0
-        name = _MOUSE_BIT_TO_NAME.get(bitfield)
-        return f"mouse:{name}" if name else f"mouse:0x{bitfield:02x}"
-
-    # Combos: 01 02 / 01 03 (controller), 02 03 / 02 04 (keyboard), etc.
-    if report[0] == 0x01 and report[1] in (2, 3):
-        count = report[1]
-        keys = [payload[i] for i in range(min(count, len(payload))) if payload[i] != 0]
-        if keys:
-            parts = []
-            for key_id in keys:
-                name = _CONTROLLER_ID_TO_NAME.get(key_id, f"0x{key_id:02x}")
-                parts.append(f"controller:{name}")
-            return "+".join(parts)
-
-    if report[0] == 0x02 and report[1] >= 3:
-        # keyboard combo: payload [0x00, key, key, ...]
-        keys = [payload[i] for i in range(1, min(report[1], len(payload))) if payload[i] != 0]
-        if keys:
-            parts = []
-            for usage in keys:
-                name = _USAGE_TO_KEY.get(usage, f"0x{usage:02x}")
-                parts.append(f"key:{name}")
-            return "+".join(parts)
-
-    return None
+    return decode_report_target(report, payload)
 
 
 def decode_turbo(data: bytes) -> dict | None:
@@ -220,15 +177,18 @@ def _parse_macro_step(data: bytes) -> dict | None:
     if data[6] == 0 and data[11] == 0:
         return None
 
-    target_id = data[12]
     press_ms = (data[16] << 8) | data[17]
     release_ms = (data[18] << 8) | data[19]
-    target_name = _CONTROLLER_ID_TO_NAME.get(target_id, f"0x{target_id:02x}")
+    # byte 10/11 = mapping type / key count, 12-15 = code (same encoding as key mappings)
+    target = decode_report_target(bytes(data[10:12]), bytes(data[12:16]))
+    if target is None:
+        target_id = data[12]
+        target = f"controller:{_CONTROLLER_ID_TO_NAME.get(target_id, f'0x{target_id:02x}')}"
     return {
         "step": data[5],
         "macro_type": data[6],
         "loop": bool(data[7]),
-        "target": f"controller:{target_name}",
+        "target": target,
         "press_ms": press_ms,
         "release_ms": release_ms,
     }

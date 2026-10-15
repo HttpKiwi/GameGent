@@ -12,6 +12,31 @@ export function useDeviceStatus() {
   });
 }
 
+export function useDeviceInfo(connected: boolean) {
+  return useQuery({
+    queryKey: ['device-info'],
+    queryFn: api.getDeviceInfo,
+    enabled: connected,
+    refetchInterval: 60000, // the official app polls the battery once a minute
+    retry: false,
+  });
+}
+
+/** Factory-reset config sections (or all); the server saves and applies them. */
+export function useResetConfig() {
+  const queryClient = useQueryClient();
+  const replaceConfig = useConfigStore((s) => s.replaceConfig);
+
+  return useMutation({
+    mutationFn: (sections?: string[]) => api.resetConfig(sections),
+    onSuccess: (result) => {
+      replaceConfig(result.config as GameGentConfig);
+      queryClient.invalidateQueries({ queryKey: ['profiles'] });
+      queryClient.invalidateQueries({ queryKey: ['config'] });
+    },
+  });
+}
+
 export function useDeviceMappingsPoll(connected: boolean) {
   const setKeyMappingsFromDevice = useConfigStore((s) => s.setKeyMappingsFromDevice);
 

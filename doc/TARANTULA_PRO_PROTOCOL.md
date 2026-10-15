@@ -218,3 +218,96 @@ Bytes 27–41: live RGB of 5 LEDs. "Original" mode reports raw physical buttons 
 | Option to enable/disable automatic trigger travel calibration | `SetDPadParam` b8 (`fastTrigger`) |
 | Turbo settings no longer survive power-off | turbo (§5.7 b12/b13) is volatile; re-apply on connect |
 | Added Radar lighting effect | `LightMode = 5`; likely no effect before `V0250917A` |
+
+---
+
+## 9. What the official app really does (GameSir Connect 1.16.5, T3Pro code path)
+
+Read from `dist/electron/main.js` (the T3Pro device proxy, its model converters and the default
+profile) and `renderer.js` (UI i18n), plus the DLL's exported API. Everything here is **[JS]**
+unless noted; none of it was run against hardware in this pass.
+
+### 9.1 Device table
+- `T3Pro`: wired PID `0x1050` (config usage page `0xFFFF`), wireless PID `0x103E` (config usage page
+  `0xFFF0`); the app also knows `0x100E`/`4110` and the Xbox-mode PID `0x1042` (`T3ProXbox`).
+- Controller firmware shipped: 2.0.6 (`G560159`, `G560163`). Firmware display = `major.(b/10).(b%10)`
+  of bytes `[major, minor*10+patch]` ("02 06" → 2.0.6); dongle firmware is shown as the 4 raw bytes in
+  hex ("0241221A").
+- The app polls `GetDeviceInfo` every 60 s for battery and charging (`battery == 255` = charging).
+- **Remappable sources** (`CanMappingKeys`): A B X Y, LB LT L3, RB RT R3, D-pad ×4, L4, R4, View, Menu,
+  Capture. **Targets** (`MappingList`): A B X Y, D-pad ×4, LB RB LT RT, L3 R3, View, Menu, Capture,
+  `NC` (= vacant, button does nothing), plus keyboard/mouse/media and macros. **Factory mapping**
+  (`DefaultMapping`): C1, C2 → View; C3, C4 → Menu; T3 → Capture; every other key maps to itself.
+
+### 9.2 DLL functions the app actually calls
+Bound from JS: `ABXYRotationTest`, `UpdateFirmware`, `IsFirmwareUpdateSupported`, `GetDeviceInfo`,
+`Get/SetKeyMappingHSV`, `GetVersion`, `SetGamepadStateReport`, `Get/SetStickCurveHSV`,
+`Get/SetStickMapping`, `Get/SetTriggerParam`, `Get/SetVibrateLevel`, `Get/SetLightParam`,
+`Get/SetLightColorHSV`, `Get/SetDPadParam`, `SaveConfigPage`, `SetVibrateTest`,
+`Get/SetMotionSenseCurveHSV`, `Get/SetMotionSenseMapping`, `Get/SetMacroStep`, `GetMacAddress`,
+`GetDevicePID`, `GetHardwareID`, `SetISPMode`, `GetDeviceType`.
+**Not used by the app** (so no known-good arguments): `Set/GetConfigPage`, `ResetConfigPage`, both
+calibration pairs, `SetLightColorTest`, `ExchangeBT*`, `SetPairInfo/Mode`. "Reset" in the app is done
+client-side by writing the default profile (§9.8). Writes are debounced: one `SaveConfigPage` 500 ms
+after the last change.
+
+### 9.3 Key mappings (`SetKeyMapping`)
+- Written fields: `page 0, key 0, trigger 0, colour 0`, `mappingKey` = source, `toggle`, turbo
+  (`turboTimes > 1` → mode A, ≥ 12 → B, ≥ 20 → C; otherwise mode off with times 1), `mappingType`,
+  `gamepadKeyCount`, `mappingCode` (8 bytes, only the first 4 are on the wire).
+- **Keyboard**: `code = [modifier bits, k1, k2, …]`, count = 1 + number of keys. Modifier bit order
+  LCtrl, LShift, LAlt, Win, RCtrl, RShift, RAlt (bit 7 = Win again in the app). A modifier alone is
+  count 1. Modifiers must go in the bit field, **not** as usage codes `0xE0..0xE7` in a key slot.
+- **Mouse**: `[0, 0, scroll, buttons]`, scroll `0x01` up / `0xFF` down / `0x80` both; button bits Left 1,
+  Right 2, Middle 4, Button5 8, Button4 0x10.
+- **Media**: `[0, 0, 0, bits]`, bits Mute, Vol−, Vol+, MicMute, Play, Prev, Stop, Next.
+- **Controller**: 1–3 key ids. "Macro" and "none" are type Vacant; "self" is Joystick with the source id.
+- Wheel zones (stick sectors, gyro directions) are ordinary key mappings whose `mappingKey` is the zone:
+  inner sticks 16–19 (L) / 20–23 (R), outer 24–27 / 28–31, gyro 32–35. The four outer zones of a stick
+  all get the single "outline" target.
+
+### 9.4 Sticks, triggers, motion
+- **Curves**: type 0 linear, 1 concave/convex, 2 S / inverse-S, 3 custom. The UI's curvature slider
+  only writes `curvature` (shown for types ≠ 0); the three points keep their default `(30,30) (50,50)
+  (70,70)` unless the user drags them (custom). So types 0–2 are shaped by the device from
+  `curveType` + `curvature`; GameGent's earlier hard-coded point tables were captures of one state.
+- Stick mapping: `inner 40, outer 80` fixed, `angle = cross`, invert flags in both the stick and the
+  mouse fields, `miceSensitivityY = X`. `StickMapping` output is selected by choosing the *other*
+  stick's output in the UI.
+- Triggers: `hairTrigger.enabled == false` forces type Linear. Defaults dead zone 5/95, anti 0/100,
+  hair 10/20.
+- Motion: one device config (`stickSensitivityY` is written equal to X by the app); aim/tilt is the
+  `type` field, axis `shootingMode` 0 YZ / 1 XY / 2 XYZ; defaults output Off, trigger range 40, cross 40.
+
+### 9.5 Lights and D-pad
+- `SetLightColor` is written for **four** names every time: Panel (1 LED), Home (1 LED), ABXY (4 LEDs)
+  and BAYX (4 LEDs). Colours are **HSV** (hue 0–360 as 16 bit in the DLL API, saturation, value, all
+  0–100). The **panel's value is overwritten with the brightness setting**.
+- ABXY is the colour set for the Xbox layout (`layout 1`), BAYX for the Switch layout (`layout 2`);
+  array order follows the letters of the name. Defaults: ABXY = A green (120°), B red (0°), X blue
+  (240°), Y yellow (59°), all value 6; BAYX all white value 6; Home white value 100; Panel 240° value 50.
+- D-pad param: `smartStartStop` and `fastTrigger` are **0 = enabled**.
+
+### 9.6 Macros (T3Pro)
+At most 12 steps; one kind of step per macro (the T3Pro UI refuses to mix types). Write order: the
+button's key mapping as Vacant, `SetMacroStep` index `0xFF` (clear), then steps 0…n. Per step: trigger
+(1 one-shot / 2 hold), loop flag, loop time, type, count, code, start (cumulative delays) and end
+(= start + hold). `timeScale` is 1 for the T3Pro; the field names say 10 ms, the UI writes its values
+unscaled, so unit confirmation on hardware is still open. The UI can also *record* a macro from the
+gamepad state report.
+
+### 9.7 Notifications and state
+With `SetGamepadStateReport` = Mapped (2) the app listens on the interface with usage page `0xFFA0`,
+usage 1: `06 1a 0a 03` state frames (LED RGBs at bytes 27–41) and `06 05 0a 0d [mask]` when the
+config changed on the device (bit 1 sticks, 2 triggers, 4 keys, 5 basic info, 6/7 lights); `Original`
+(1) is used by the test mode. On this Linux box the wireless dongle shows a single hidraw node that
+carries report ids 1, 2, 3, 6 and 7, so one fd serves both.
+
+### 9.8 Factory defaults
+See `core/defaults.py` (transcribed from the app's default profile). Vibration defaults to level 3
+(75 %); the app only offers five levels (0/25/50/75/100).
+
+### 9.9 Still unverified on hardware
+Panel value = brightness, the BAYX set order, custom-curve points, media/modifier encodings, macro time
+units and loop time, wired mode (`1050`), outer-ring key override, `fastTrigger`/`macroSwitch` on the
+new dongle firmware.

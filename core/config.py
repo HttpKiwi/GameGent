@@ -2,56 +2,14 @@
 import os
 import json
 
+from .defaults import factory_defaults
+
 CONFIG_DIR = os.path.expanduser("~/.config/gamegent")
 CONFIG_FILE = os.path.join(CONFIG_DIR, "config.json")
 
-DEFAULT_CONFIG = {
-    "brightness": 100,
-    "lighting_mode": "static",
-    "lighting_speed": 100,
-    "color_hue": 0,
-    "lighting_zone": 1,
-    "inner_deadzone": 0,
-    "outer_deadzone": 100,
-    "key_mappings": {},
-    "turbo_settings": {},
-    "stick_left": {
-        "mode": "native",
-        "is_circle": True,
-        "sensitivity": 50,
-        "overlap_percent": 50,
-        "mouse_dpi": 50,
-        "deadzone_min": 5,
-        "antideadzone_min": 0,
-        "deadzone_max": 100,
-        "antideadzone_max": 100,
-        "curve_preset": "linear",
-        "curve_intensity": 50,
-        "keyboard": {
-            "left": 4, "right": 7, "up": 26, "down": 22,
-            "overlap_left": 1, "overlap_right": 1, "overlap_up": 1, "overlap_down": 1,
-            "left_outer": 0, "right_outer": 0, "up_outer": 0, "down_outer": 0
-        }
-    },
-    "stick_right": {
-        "mode": "native",
-        "is_circle": True,
-        "sensitivity": 50,
-        "overlap_percent": 50,
-        "mouse_dpi": 50,
-        "deadzone_min": 5,
-        "antideadzone_min": 0,
-        "deadzone_max": 100,
-        "antideadzone_max": 100,
-        "curve_preset": "linear",
-        "curve_intensity": 50,
-        "keyboard": {
-            "left": 4, "right": 7, "up": 26, "down": 22,
-            "overlap_left": 1, "overlap_right": 1, "overlap_up": 1, "overlap_down": 1,
-            "left_outer": 0, "right_outer": 0, "up_outer": 0, "down_outer": 0
-        }
-    }
-}
+DEFAULT_CONFIG = factory_defaults()
+DEFAULT_CONFIG.update({"inner_deadzone": 0, "outer_deadzone": 100})
+
 
 def load_config() -> dict:
     if not os.path.exists(CONFIG_FILE):
@@ -80,6 +38,15 @@ def load_config() -> dict:
             if "joystick_right" in config and "stick_right" not in config:
                 config["stick_right"] = config["joystick_right"].copy()
                 updated = True
+            # Wheel keys used to be HID usage codes; they are mapping targets now.
+            from .hid_keycodes import KEYBOARD_USAGE
+            names = {v: k for k, v in KEYBOARD_USAGE.items()}
+            for side in ("stick_left", "stick_right"):
+                kb = (config.get(side) or {}).get("keyboard")
+                for key in ("left", "right", "up", "down"):
+                    if isinstance(kb, dict) and isinstance(kb.get(key), int):
+                        kb[key] = f"key:{names[kb[key]]}" if kb[key] in names else "none"
+                        updated = True
             if updated:
                 save_config(config)
             return config

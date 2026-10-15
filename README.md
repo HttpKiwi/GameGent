@@ -20,7 +20,7 @@ gamegent rumble --fire 100 --duration 500
 
 `/etc/udev/rules.d/99-gamesir.rules`:
 ```
-KERNEL=="hidraw*", ATTRS{idVendor}=="3537", ATTRS{idProduct}=="103e", MODE="0666"
+KERNEL=="hidraw*", ATTRS{idVendor}=="3537", ATTRS{idProduct}=="103e|1050", MODE="0666"
 ```
 Then: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 
@@ -85,7 +85,8 @@ python3 main.py stick right mouse --mouse-dpi 75 --ratio 60 --invert-y
 
 # Wheel (keys) mode with WASD; outer ring = Left Shift
 python3 main.py stick left wheel --overlap 65 \
-    --kbd-up 26 --kbd-down 22 --kbd-left 4 --kbd-right 7
+    --wheel-up key:w --wheel-down key:s --wheel-left key:a --wheel-right key:d \
+    --wheel-outline key:left_shift
 
 # Clone mode
 python3 main.py stick left clone
@@ -93,10 +94,12 @@ python3 main.py stick left clone
 # Curves
 python3 main.py stick left native --curve expo --curve-intensity 60
 python3 main.py stick left native --curve s-curve --deadzone-min 10 --deadzone-max 80
+python3 main.py stick left native --curve custom --curve-points '20,10;50,45;80,85'
 ```
 
 Modes: `native | mouse | wheel | clone` (`clone` = output as the other stick)
-Curves: `linear | expo | s-curve`
+Curves: `linear | expo | s-curve | custom` (`--curve-intensity` = curvature for expo/s-curve; custom takes 3 points)
+Wheel keys accept any target (see Button Remapping), the outer ring is one target for all four directions.
 
 ### Gyro / Motion Aim
 
@@ -126,7 +129,7 @@ Methods: `off | hold | press | always`
 Axis: `yaw | roll | global`
 Activate button: `c1 c2 c3 c4 t1 t2 t3 l4 r4 a b x y lb lt l3 rb rt r3 back start`
 
-Keyboard direction targets: `key:X` (scancode), `mouse:scroll_up`, `controller:lt`, `unbind`
+Keyboard direction targets: any mapping target, e.g. `key:w`, `key:ctrl+a`, `mouse:scroll_up`, `controller:lt`, `none`
 
 ### Button Remapping
 
@@ -134,7 +137,11 @@ Keyboard direction targets: `key:X` (scancode), `mouse:scroll_up`, `controller:l
 gamegent map c1 key:enter          # C1 → Enter key
 gamegent map l4 controller:a       # L4 → A button
 gamegent map r4 mouse:left_click   # R4 → left click
-gamegent map t1 unbind             # T1 → disabled
+gamegent map t1 none               # T1 → does nothing (same as unbind)
+gamegent map l4 reset              # L4 → factory mapping (C1/C2 View, C3/C4 Menu, T3 Capture, others themselves)
+gamegent map c2 key:ctrl+shift+a   # modifiers + up to 3 keys
+gamegent map c3 media:play         # media keys: mute vol_down vol_up mic_mute play prev stop next
+gamegent map r4 mouse:left_click+scroll_up
 
 # Read remaps currently stored on the controller
 gamegent read-mappings             # Human-readable
@@ -143,11 +150,22 @@ gamegent read-mappings --raw       # Include raw HID response packets
 ```
 
 Source buttons: `c1 c2 c3 c4 t1 t2 t3 l4 r4` (plus face/bumper IDs when reading)
-Targets: `key:X`, `controller:X`, `mouse:X`, `unbind`
+Targets: `key:X[+Y…]`, `controller:X[+Y…]`, `mouse:X[+Y…]`, `media:X`, `none`/`unbind`, `reset`
 
 Onboard remaps are readable via `07 05 05 02 00 [button_index]` (see
 [`doc/remapping.md`](doc/remapping.md) and [`doc/hex_protocol.md`](doc/hex_protocol.md)).
 Identity mappings on face buttons (`a→a`) and native report `14 01` are treated as unmapped.
+
+### Device and reset
+
+```bash
+gamegent device                     # battery, charging, controller + dongle firmware, MAC
+gamegent reset                      # all settings back to the official factory defaults
+gamegent reset sticks lighting      # sections: sticks triggers gyro mappings lighting rumble
+```
+
+The UI has a "Reset" button per tab and shows the battery next to the connection status.
+Colours are HSV (the controller takes hue, saturation and *value*); the panel's value is its brightness.
 
 ### Config
 

@@ -82,23 +82,35 @@ def set_abxy_layout(layout: str):
     send_raw_bytes(build_layout_packet(layout, current))
 
 
-def set_led_color(target: str, hue: int, saturation: int = 100, lightness: int = 50):
-    """Set per-LED color via 07 10 07 03. target: 'panel' or 'home'."""
-    target = target.lower().strip()
-    selectors = {"home": 0x00, "panel": 0x04}
-    if target not in selectors:
-        raise ValueError(f"Unknown LED target: {target}. Use 'panel' or 'home'.")
-    hue = max(0, min(360, hue))
-    compressed_hue = (hue * 255) // 360
-    saturation = max(0, min(100, saturation))
-    lightness = max(0, min(100, lightness))
+LIGHT_NAMES = {"home": 0x00, "panel": 0x04, "abxy": 0x05, "bayx": 0x06}
+
+
+def _hsv_bytes(hue: int, saturation: int, value: int) -> list[int]:
+    """Device HSV: hue 0-360 degrees -> 0-255, saturation and value 0-100."""
+    return [(max(0, min(360, hue)) * 255) // 360, max(0, min(100, saturation)), max(0, min(100, value))]
+
+
+def build_light_color_packet(name: str, colors: list[tuple[int, int, int]]) -> bytes:
+    """SetLightColor 07 10 07 03: [name] + 4 x (hue byte, saturation, value).
+
+    Colours are (hue degrees, saturation, value) with value 0-100 (HSV, not HSL).
+    Unused LEDs are zero-padded like the official app does.
+    """
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x10, 0x07, 0x03]
-    packet[4] = selectors[target]
-    packet[5] = compressed_hue
-    packet[6] = saturation
-    packet[7] = lightness
-    send_raw_bytes(packet)
+    packet[4] = LIGHT_NAMES[name]
+    for i, (h, s, v) in enumerate(colors[:4]):
+        packet[5 + i * 3:8 + i * 3] = _hsv_bytes(h, s, v)
+    return bytes(packet)
+
+
+def set_led_color(target: str, hue: int, saturation: int = 100, value: int = 50):
+    """Panel or home LED colour (HSV). The official app sets the panel's value to the
+    lighting brightness, so callers pass brightness as `value` for the panel."""
+    target = target.lower().strip()
+    if target not in ("home", "panel"):
+        raise ValueError(f"Unknown LED target: {target}. Use 'panel' or 'home'.")
+    send_raw_bytes(build_light_color_packet(target, [(hue, saturation, value)]))
 
 
 def set_face_button_color(button: str, hue: int, saturation: int = 100, lightness: int = 50):
@@ -110,45 +122,25 @@ def set_face_button_color(button: str, hue: int, saturation: int = 100, lightnes
     positions = {"a": 0, "b": 1, "x": 2, "y": 3}
     if button not in positions:
         raise ValueError(f"Unknown button: {button}. Use 'a', 'b', 'x', 'y', or 'home'.")
-    hue = max(0, min(360, hue))
-    compressed_hue = (hue * 255) // 360
-    saturation = max(0, min(100, saturation))
-    lightness = max(0, min(100, lightness))
-
-    pos = positions[button]
     config = load_config()
-    if "face_leds" not in config:
-        config["face_leds"] = [[0, 100, 50], [0, 100, 50], [0, 100, 50], [0, 100, 50]]
-    colors = config["face_leds"]
-    if len(colors) < 4:
-        colors = [[0, 100, 50]] * 4
-    colors[pos] = [compressed_hue, saturation, lightness]
-    save_config(config)
-    _send_face_packet_from(colors)
-
-
-def set_face_colors(a_hsl: tuple, b_hsl: tuple, x_hsl: tuple, y_hsl: tuple):
-    """Set all 4 face button colors at once. Each: (hue, saturation, lightness)."""
-    colors = []
-    for h, s, l in [a_hsl, b_hsl, x_hsl, y_hsl]:
-        h = max(0, min(360, h))
-        ch = (h * 255) // 360
-        s = max(0, min(100, s))
-        l = max(0, min(100, l))
-        colors.append([ch, s, l])
-    config = load_config()
+    colors = config.get("face_leds") or []
+    colors = [list(c) if c else [0, 100, 50] for c in (colors + [None] * 4)[:4]]
+    colors[positions[button]] = _hsv_bytes(hue, saturation, lightness)
     config["face_leds"] = colors
     save_config(config)
     _send_face_packet_from(colors)
 
 
+def set_face_colors(a_hsv: tuple, b_hsv: tuple, x_hsv: tuple, y_hsv: tuple, name: str = "abxy"):
+    """All 4 face LEDs of one layout set ("abxy" Xbox / "bayx" Switch). Each: (hue, sat, value)."""
+    send_raw_bytes(build_light_color_packet(name, [a_hsv, b_hsv, x_hsv, y_hsv]))
+
+
 def _send_face_packet_from(colors: list):
+    """colors: 4 x [hue byte, saturation, value] as stored in the config."""
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x10, 0x07, 0x03]
-    packet[4] = 0x05
-    for i, (h, s, l) in enumerate(colors):
-        offset = 5 + i * 3
-        packet[offset] = h
-        packet[offset + 1] = s
-        packet[offset + 2] = l
+    packet[4] = LIGHT_NAMES["abxy"]
+    for i, (h, s, v) in enumerate(colors[:4]):
+        packet[5 + i * 3:8 + i * 3] = [h, s, v]
     send_raw_bytes(packet)

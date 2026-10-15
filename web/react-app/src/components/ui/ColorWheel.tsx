@@ -1,31 +1,32 @@
-import { HslColorPicker } from 'react-colorful';
+import { HsvColorPicker } from 'react-colorful';
 
 interface ColorWheelProps {
   hue: number;
   saturation: number;
-  lightness: number;
+  value: number;
   width?: number;
   height?: number;
-  onColorChange: (hsl: { h: number; s: number; l: number }) => void;
+  onColorChange: (hsv: { h: number; s: number; v: number }) => void;
 }
 
+/** HSV picker: the controller's LEDs take hue/saturation/value, not HSL. */
 export function ColorWheel({
   hue,
   saturation,
-  lightness,
+  value,
   width = 200,
   height = 200,
   onColorChange,
 }: ColorWheelProps) {
   return (
     <div className="color-wheel-container" style={{ width, height }}>
-      <HslColorPicker
-        color={{ h: hue, s: saturation, l: lightness }}
+      <HsvColorPicker
+        color={{ h: hue, s: saturation, v: value }}
         onChange={(color) =>
           onColorChange({
             h: Math.round(color.h),
             s: Math.round(color.s),
-            l: Math.round(color.l),
+            v: Math.round(color.v),
           })
         }
       />

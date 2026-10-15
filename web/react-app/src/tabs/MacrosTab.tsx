@@ -24,9 +24,9 @@ export function MacrosTab() {
         <SettingCard title="Macro Setup" span={2}>
           <SelectField label="Source Button" value={button} options={BUTTON_OPTIONS} onChange={setButton} />
           <TextAreaField
-            label="Macro Steps (btn:press_ms:release_ms)"
+            label="Macro Steps (target:press_ms:release_ms, max 12)"
             value={stepsText}
-            placeholder="e.g., lb:0:50 rb:100:110"
+            placeholder="e.g., lb:0:50 (one step per line); key:a:0:50 or mouse:left_click:0:50 for keys/mouse"
             onChange={setStepsText}
           />
           <div className="card-row">

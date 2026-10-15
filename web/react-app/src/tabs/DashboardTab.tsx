@@ -18,11 +18,12 @@ const LAYOUT_OPTIONS = [
 const STICK_MODE_OPTIONS = [
   { value: 'native', label: 'Native' },
   { value: 'mouse', label: 'Mouse' },
-  { value: 'keyboard', label: 'Keyboard' },
+  { value: 'wheel', label: 'Wheel (keys)' },
   { value: 'clone', label: 'Clone' },
 ];
 
 const GYRO_MODE_OPTIONS = [
+  { value: 'off', label: 'Off' },
   { value: 'mouse', label: 'Mouse' },
   { value: 'left_stick', label: 'Left Stick' },
   { value: 'right_stick', label: 'Right Stick' },

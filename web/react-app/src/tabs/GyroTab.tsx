@@ -1,8 +1,11 @@
 import { useConfigStore } from '../stores/configStore';
+import { ResetButton } from '../components/ResetButton';
+import { CurveCard } from '../components/CurveCard';
 import { SelectField, RangeSlider, CheckboxField, TextField, SettingCard } from '../components/ui';
 import { BUTTON_OPTIONS } from './buttonOptions';
 
 const GYRO_OUTPUT_MODES = [
+  { value: 'off', label: 'Off' },
   { value: 'mouse', label: 'Mouse' },
   { value: 'left_stick', label: 'Left Stick' },
   { value: 'right_stick', label: 'Right Stick' },
@@ -27,12 +30,6 @@ const AXIS_MODES = [
   { value: 'roll', label: 'Roll' },
 ];
 
-const CURVE_OPTIONS = [
-  { value: 'linear', label: 'Linear' },
-  { value: 'expo', label: 'Expo' },
-  { value: 's-curve', label: 'S-Curve' },
-];
-
 export function GyroTab() {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
@@ -47,6 +44,7 @@ export function GyroTab() {
   return (
     <div>
       <h2>Gyro / Motion Aim</h2>
+      <ResetButton sections={['gyro']} what="gyro" />
       <div className="setting-grid">
         <SettingCard title="Activation" span={2}>
           <div className="card-row">
@@ -171,21 +169,7 @@ export function GyroTab() {
           </div>
         </SettingCard>
 
-        <SettingCard title="Curve">
-          <SelectField
-            label="Preset"
-            value={(g.curve_preset as string) ?? 'linear'}
-            options={CURVE_OPTIONS}
-            onChange={(v) => set({ curve_preset: v })}
-          />
-          <RangeSlider
-            label="Intensity"
-            value={(g.curve_intensity as number) ?? 50}
-            min={0}
-            max={100}
-            onChange={(v) => set({ curve_intensity: v })}
-          />
-        </SettingCard>
+        <CurveCard value={g} onChange={set} />
 
         {(g.output_mode as string) === 'keyboard' && (
           <SettingCard title="Keyboard Targets" span={2}>

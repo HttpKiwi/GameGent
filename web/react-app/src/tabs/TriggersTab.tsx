@@ -1,16 +1,12 @@
 import { useConfigStore } from '../stores/configStore';
+import { ResetButton } from '../components/ResetButton';
+import { CurveCard } from '../components/CurveCard';
 import { SelectField, RangeSlider, SettingCard } from '../components/ui';
 
 const HAIR_MODES = [
   { value: 'off', label: 'Off' },
   { value: 'adaptive', label: 'Adaptive' },
   { value: 'fixed', label: 'Fixed' },
-];
-
-const CURVE_OPTIONS = [
-  { value: 'linear', label: 'Linear' },
-  { value: 'expo', label: 'Expo' },
-  { value: 's-curve', label: 'S-Curve' },
 ];
 
 type Side = 'left' | 'right';
@@ -24,6 +20,7 @@ export function TriggersTab() {
   return (
     <div>
       <h2>Triggers</h2>
+      <ResetButton sections={['triggers']} what="triggers" />
       <TriggerSection label="Left Trigger" side="left" config={config} setConfig={setConfig} />
       <TriggerSection label="Right Trigger" side="right" config={config} setConfig={setConfig} />
     </div>
@@ -115,21 +112,7 @@ function TriggerSection({
           </div>
         </SettingCard>
 
-        <SettingCard title="Curve">
-          <SelectField
-            label="Preset"
-            value={(t.curve_preset as string) ?? 'linear'}
-            options={CURVE_OPTIONS}
-            onChange={(v) => set({ curve_preset: v })}
-          />
-          <RangeSlider
-            label="Intensity"
-            value={(t.curve_intensity as number) ?? 50}
-            min={0}
-            max={100}
-            onChange={(v) => set({ curve_intensity: v })}
-          />
-        </SettingCard>
+        <CurveCard value={t} onChange={set} />
       </div>
     </div>
   );

@@ -70,6 +70,7 @@ export interface GameGentConfig {
   trigger_right?: TriggerConfig;
   gyro?: GyroConfig;
   face_leds?: FaceLED[];
+  bayx_leds?: FaceLED[];
   home_led?: FaceLED;
   key_mappings?: KeyMappings;
   [key: string]: unknown;

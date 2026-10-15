@@ -16,6 +16,7 @@ import {
   useAutoSave,
   useDeviceStatus,
   useDeviceMappingsPoll,
+  useDeviceInfo,
   useProfiles,
   useActivateProfile,
   useGameRulesStatus,
@@ -45,6 +46,7 @@ function ConnectionIndicator() {
   const { data, isError, isPending } = useDeviceStatus();
   const connected = data?.connected === true;
   useDeviceMappingsPoll(connected);
+  const { data: info } = useDeviceInfo(connected);
 
   let label = 'Checking…';
   let state: 'pending' | 'connected' | 'disconnected' = 'pending';
@@ -57,9 +59,19 @@ function ConnectionIndicator() {
   }
 
   return (
-    <div className={`connection-pill connection-pill--${state}`} title={data?.path ?? undefined}>
+    <div className={`connection-pill connection-pill--${state}`} title={
+        info
+          ? `Controller ${info.firmware}` + (info.dongle ? ` · dongle V${info.dongle.firmware}` : '') + ` · ${info.mac}`
+          : (data?.path ?? undefined)
+      }
+    >
       <span className="connection-pill__dot" aria-hidden />
       <span>{label}</span>
+      {connected && info && (
+        <span className="connection-pill__battery">
+          {info.charging ? '⚡' : `${info.battery}%`}
+        </span>
+      )}
     </div>
   );
 }

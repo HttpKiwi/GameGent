@@ -58,7 +58,7 @@ def test_trigger_zero_values_kept():
 def test_trigger_hair_defaults_when_absent():
     cfg = apply_config._build_trigger(0, {})
     p = build_trigger_packet(cfg)
-    assert (p[6], p[7]) == (0x0a, 0x1e)
+    assert (p[6], p[7]) == (10, 20)
 
 
 def test_turbo_mode_thresholds():
@@ -143,7 +143,7 @@ def test_foreign_host_rejected():
 def test_face_leds_skipped_when_absent():
     sent = []
     orig = apply_config.set_face_colors
-    apply_config.set_face_colors = lambda *a: sent.append(a)
+    apply_config.set_face_colors = lambda *a, **k: sent.append(a)
     try:
         assert _face_section({}) == "skipped" and sent == []
         assert _face_section({"face_leds": [[0, 100, 50]] * 4}) == "ok" and len(sent) == 1
@@ -232,7 +232,7 @@ def test_autosave_mirrors_active_profile_and_applies_only_changes():
         assert prof.autosave_config(edited, expected_profile="Game")["profile"] == "Game"
         assert prof.load_profile("Game")["brightness"] == 40      # survives a profile switch
         assert prof.load_config()["brightness"] == 40
-        assert pushed == [{"lighting"}]
+        assert pushed == [{"lighting", "led"}]   # panel value follows brightness
         try:
             prof.autosave_config(edited, expected_profile="Other")
             assert False, "stale profile must be rejected"
@@ -241,6 +241,168 @@ def test_autosave_mirrors_active_profile_and_applies_only_changes():
         assert len(pushed) == 1
     finally:
         ac.apply_config_to_device = orig
+
+
+def test_targets_round_trip():
+    from core.targets import encode_target, decode_target
+    cases = {
+        "controller:a": "controller:a",
+        "controller:x+controller:y": "controller:x+controller:y",
+        "key:a": "key:a",
+        "key:ctrl+shift+a": "key:left_ctrl+key:left_shift+key:a",
+        "key:left_ctrl": "key:left_ctrl",
+        "mouse:left_click+scroll_down": "mouse:left_click+mouse:scroll_down",
+        "media:vol_up+media:mute": "media:mute+media:vol_up",
+    }
+    for target, expected in cases.items():
+        report, payload = encode_target(target)
+        assert decode_target(report, payload) == expected, target
+        # decoded strings must be applicable again (read -> config -> apply)
+        assert encode_target(expected) == (report, payload), target
+
+
+def test_target_encoding_matches_official_app():
+    from core.targets import encode_target
+    assert encode_target("key:left_ctrl") == (bytes([2, 1]), bytes([0x01]).ljust(16, b"\0"))  # modifier bit, count 1
+    assert encode_target("key:ctrl+a") == (bytes([2, 2]), bytes([0x01, 0x04]).ljust(16, b"\0"))
+    assert encode_target("media:play") == (bytes([4, 4]), bytes([0, 0, 0, 0x10]).ljust(16, b"\0"))
+    assert encode_target("mouse:button_4")[1][3] == 0x10 and encode_target("mouse:button_5")[1][3] == 0x08
+    assert encode_target("mouse:scroll_up+scroll_down")[1][2] == 0x80
+
+
+def test_none_and_reset_targets():
+    from core.remap import resolve_target_packet
+    assert resolve_target_packet(0x24, "none")[14:16] == bytes([0, 0])
+    assert resolve_target_packet(0x24, "nc") == resolve_target_packet(0x24, "unbind")
+
+
+def test_wheel_keys_accept_any_target():
+    cfg = StickConfig(mode="wheel", stick_id=1, keyboard=KeyboardMapping(up="key:ctrl+w", left="mouse:left_click",
+                                                                         down="none", right="controller:a"))
+    pk = {p[10]: p for p in generate_hardware_stream(StickConfig(), cfg) if p[2:4] == bytes([0x05, 0x01])}
+    assert pk[0x16][14:18] == bytes([2, 2, 0x01, 0x1a])      # right stick up = zone 0x12 + 4
+    assert pk[0x14][14:16] == bytes([3, 4]) and pk[0x15][14:16] == bytes([1, 1])
+    assert pk[0x17][14:16] == bytes([0, 0])                  # none
+    assert all(pk[z][14:18] == bytes([2, 1, 0x02, 0]) for z in (0x1c, 0x1d, 0x1e, 0x1f))  # outline = Left Shift
+
+
+def test_gyro_zones_use_same_encoder():
+    from core.gyro import resolve_gyro_direction_packet
+    p = resolve_gyro_direction_packet(0x22, "key:alt+f4")
+    assert p[10] == 0x22 and p[14:18] == bytes([2, 2, 0x04, 0x3d])
+    assert resolve_gyro_direction_packet(0x22, "bogus:x") is None
+
+
+def test_curves_official_defaults_and_custom():
+    g = build_geometry_packet(StickConfig())
+    assert list(g[15:21]) == [30, 30, 50, 50, 70, 70] and g[23] == 0 and g[24] == 100
+    c = build_geometry_packet(StickConfig(curve_preset="custom", curve_points=[[10, 5], [40, 60], [90, 95]]))
+    assert list(c[15:21]) == [10, 5, 40, 60, 90, 95] and c[23] == 3
+    t = build_trigger_packet(TriggerConfig(curve_preset="custom", curve_points=[[10, 5], [40, 60], [90, 95]]))
+    assert list(t[10:16]) == [10, 5, 40, 60, 90, 95] and t[18] == 3
+    try:
+        build_geometry_packet(StickConfig(curve_preset="custom", curve_points=[[1, 1]]))
+        assert False
+    except ValueError:
+        pass
+
+
+def test_light_color_packets_hsv():
+    from core.lighting import build_light_color_packet
+    p = build_light_color_packet("panel", [(240, 100, 50)])
+    assert list(p[:11]) == [7, 0x10, 7, 3, 4, 170, 100, 50, 0, 0, 0]
+    abxy = build_light_color_packet("abxy", [(120, 100, 6), (0, 100, 6), (240, 100, 6), (59, 100, 6)])
+    assert abxy[4] == 5 and list(abxy[5:17]) == [85, 100, 6, 0, 100, 6, 170, 100, 6, 41, 100, 6]
+    assert build_light_color_packet("bayx", [(0, 0, 6)] * 4)[4] == 6
+
+
+def test_apply_writes_abxy_and_bayx_and_panel_follows_brightness():
+    import core.apply_config as ac
+    calls = []
+    orig = (ac.set_face_colors, ac.set_led_color)
+    ac.set_face_colors = lambda *a, **k: calls.append(("face", k.get("name", "abxy")))
+    ac.set_led_color = lambda *a: calls.append(("led", a))
+    try:
+        cfg = {"face_leds": [[0, 100, 6]] * 4, "bayx_leds": [[0, 0, 6]] * 4, "brightness": 30, "color_hue": 100,
+               "color_saturation": 90, "color_lightness": 77, "lighting_zone": 1}
+        assert ac._apply_face_leds(cfg) == "ok"
+        ac.apply_config_to_device(cfg, previous={"brightness": 99, "color_hue": 100, "color_saturation": 90,
+                                                 "color_lightness": 77, "lighting_zone": 1})
+    finally:
+        ac.set_face_colors, ac.set_led_color = orig
+    assert ("face", "abxy") in calls and ("face", "bayx") in calls
+    assert ("led", ("panel", 100, 90, 30)) in calls     # value = brightness, not color_lightness
+
+
+def test_factory_reset_sections_and_mapping_unbinding():
+    import tempfile
+    prof = _sandbox(tempfile.mkdtemp())
+    import core.apply_config as ac
+    sent = []
+    orig = (ac.apply_mapping, ac.set_stick_config)
+    ac.apply_mapping = lambda b, t: sent.append((b, t))
+    ac.set_stick_config = lambda *a: sent.append("sticks")
+    try:
+        cfg = {**prof.load_config(), "key_mappings": {"c1": "controller:a"},
+               "stick_left": {"mode": "mouse", "axis_ratio": 80}}
+        prof.save_config(cfg)
+        out = prof.reset_config(["mappings", "sticks"])
+    finally:
+        ac.apply_mapping, ac.set_stick_config = orig
+    assert out["config"]["key_mappings"] == {} and out["config"]["stick_left"]["mode"] == "native"
+    assert ("c1", "reset") in sent and "sticks" in sent     # removed binding restores factory mapping
+    try:
+        prof.reset_config(["nope"])
+        assert False
+    except ValueError:
+        pass
+
+
+def test_device_info_parsing_matches_captured_replies():
+    from core.device_info import parse_device_info, parse_version
+    info = parse_device_info(bytes.fromhex("06 0e 0a 01 00 02 06 12 94 90 5e 5a a0 64 00") + bytes(17))
+    assert (info["firmware"], info["battery"], info["charging"], info["mac"]) == ("2.0.6", 100, False, "12:94:90:5e:5a:a0")
+    assert parse_device_info(bytes.fromhex("06 0e 0a 01 00 02 06 12 94 90 5e 5a a0 ff 00") + bytes(17))["charging"]
+    ver = parse_version(bytes.fromhex("06 12 84 01 02 76 04 02 03 00 00 02 41 22 1a 01 00 00") + bytes(14))
+    assert ver["firmware"] == "0241221A"
+
+
+def test_macro_steps_any_target_and_limits():
+    from core.remap import build_macro_step_packet, parse_macro_step, apply_macro
+    from core.read_remap import _parse_macro_step
+    assert parse_macro_step("key:a:100:150") == ("key:a", 100, 150) and parse_macro_step("lb:0:50") == ("lb", 0, 50)
+    pkt = build_macro_step_packet(0x24, 2, "key:ctrl+a", 100, 150, macro_type=2, loop=True, loop_ms=300)
+    assert list(pkt[4:8]) == [0x24, 2, 2, 1] and list(pkt[8:10]) == [1, 0x2c]
+    assert list(pkt[10:16]) == [2, 2, 0x01, 0x04, 0, 0] and list(pkt[16:20]) == [0, 100, 0, 150]
+    read = _parse_macro_step(b"\x06" + pkt[1:3] + b"\x02" + pkt[4:])   # reply header 06 13 01 02
+    assert read["target"] == "key:left_ctrl+key:a" and (read["press_ms"], read["release_ms"]) == (100, 150)
+    legacy = build_macro_step_packet(0x24, 0, "lb", 0, 50)
+    assert list(legacy[10:13]) == [1, 1, 0x04]
+    for bad in ([("lb", 0, 1)] * 13, [("lb", 0, 1), ("key:a", 0, 1)]):
+        try:
+            apply_macro("l4", bad)
+            assert False
+        except ValueError:
+            pass
+
+
+def test_toggle_only_does_not_turn_turbo_on():
+    from core.hid_keycodes import controller_packet
+    from core.read_remap import decode_turbo
+    import core.apply_config as ac
+    pkt = apply_turbo(controller_packet(0x24, 1), 1, True, turbo=False)
+    assert (pkt[11], pkt[12], pkt[13]) == (1, 0, 1)
+    assert decode_turbo(b"\x06" + pkt[1:])["turbo"] is False
+    sent = []
+    orig = (ac.apply_mapping, ac.set_turbo)
+    ac.apply_mapping = lambda b, t: None
+    ac.set_turbo = lambda b, t, rate, cont: sent.append((rate, cont))
+    try:
+        ac._apply_mappings({"key_mappings": {"l4": "controller:a"},
+                            "turbo_settings": {"l4": {"rate": 10, "continuous": True, "turbo": False}}}, None)
+    finally:
+        ac.apply_mapping, ac.set_turbo = orig
+    assert sent == [(None, True)]
 
 
 if __name__ == "__main__":

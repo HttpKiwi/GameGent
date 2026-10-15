@@ -44,6 +44,31 @@ from core.game_watcher import (
 )
 
 
+def _points(text):
+    """'30,30;50,50;70,70' -> [[30, 30], [50, 50], [70, 70]] (None if not given)."""
+    if not text:
+        return None
+    return [[int(v) for v in pt.split(",")] for pt in text.split(";")]
+
+
+def cmd_reset(args):
+    from core.profiles import reset_config
+    result = reset_config(args.sections or None)
+    for section, status in result["applied"].items():
+        print(f"{section}: {status}")
+    if result["profile"]:
+        print(f"Saved to profile: {result['profile']}")
+
+
+def cmd_device(args):
+    from core.device_info import read_device_info
+    info = read_device_info()
+    battery = "charging" if info["charging"] else f"{info['battery']}%"
+    print(f"Controller firmware {info['firmware']}  battery {battery}  mac {info['mac']}")
+    if info.get("dongle"):
+        print(f"Dongle firmware V{info['dongle']['firmware']}  hardware {info['dongle']['hardware']}")
+
+
 def cmd_light(args):
     mode = args.mode.lower()
     if mode not in LIGHTING_MODES:
@@ -94,6 +119,7 @@ def cmd_trigger(args):
         antideadzone_end=args.left_anti_end if args.left_anti_end is not None else args.anti_end,
         curve_preset=args.left_curve if args.left_curve is not None else args.curve,
         curve_intensity=args.left_intensity if args.left_intensity is not None else args.curve_intensity,
+        curve_points=_points(args.curve_points),
     )
     right = TriggerConfig(
         trigger_id=1,
@@ -106,6 +132,7 @@ def cmd_trigger(args):
         antideadzone_end=args.right_anti_end if args.right_anti_end is not None else args.anti_end,
         curve_preset=args.right_curve if args.right_curve is not None else args.curve,
         curve_intensity=args.right_intensity if args.right_intensity is not None else args.curve_intensity,
+        curve_points=_points(args.curve_points),
     )
     set_trigger_config(left, right)
     print(f"Left:  hair={left.hair_mode} dz={left.deadzone_begin}-{left.deadzone_end} anti={left.antideadzone_begin}-{left.antideadzone_end} curve={left.curve_preset}")
@@ -160,16 +187,14 @@ def cmd_stick(args):
         antideadzone_max=args.antideadzone_max,
         curve_preset=args.curve,
         curve_intensity=args.curve_intensity,
+        curve_points=_points(args.curve_points),
     )
 
     if mode == "wheel":
-        kbd = KeyboardMapping(
-            left=args.kbd_left, right=args.kbd_right,
-            up=args.kbd_up, down=args.kbd_down,
-            overlap_left=args.kbd_ol_left, overlap_right=args.kbd_ol_right,
-            overlap_up=args.kbd_ol_up, overlap_down=args.kbd_ol_down,
+        cfg.keyboard = KeyboardMapping(
+            left=args.wheel_left, right=args.wheel_right, up=args.wheel_up, down=args.wheel_down,
+            outline=args.wheel_outline,
         )
-        cfg.keyboard = kbd
 
     # Use default for the other stick
     other = StickConfig(stick_id=1 if stick == "left" else 0, mode="native")
@@ -245,6 +270,7 @@ def cmd_gyro(args):
         invert_y=args.invert_y,
         curve_preset=args.curve,
         curve_intensity=args.curve_intensity,
+        curve_points=_points(args.curve_points),
         kb_up=args.kb_up,
         kb_down=args.kb_down,
         kb_left=args.kb_left,
@@ -264,14 +290,8 @@ def cmd_combo(args):
 
 
 def cmd_macro(args):
-    steps = []
-    for spec in args.steps:
-        parts = spec.split(":")
-        if len(parts) != 3:
-            print(f"Invalid step format: {spec} (use btn:press_ms:release_ms)")
-            sys.exit(1)
-        btn, press, release = parts
-        steps.append((btn, int(press), int(release)))
+    from core.remap import parse_macro_step
+    steps = [parse_macro_step(spec) for spec in args.steps]
     macro_type = 0x02 if args.hold else 0x01
     apply_macro(args.button, steps, macro_type=macro_type, loop=args.loop)
     flags = []
@@ -645,7 +665,8 @@ def main():
     p.add_argument("--anti-begin", type=int, default=0)
     p.add_argument("--anti-end", type=int, default=100)
     p.add_argument("--curve", choices=list(CURVE_PRESETS.keys()), default="linear")
-    p.add_argument("--curve-intensity", type=int, default=50)
+    p.add_argument("--curve-intensity", type=int, default=100, help="Curve curvature 0-100 (types expo/s-curve)")
+    p.add_argument("--curve-points", help="Custom curve: x,y;x,y;x,y (with --curve custom)")
     # Left trigger overrides
     p.add_argument("--left-hair", choices=list(HAIR_MODES.keys()), default=None)
     p.add_argument("--left-hair-begin", type=int, default=None)
@@ -700,15 +721,12 @@ def main():
     p.add_argument("--deadzone-max", type=int, default=100)
     p.add_argument("--antideadzone-max", type=int, default=100)
     p.add_argument("--curve", choices=list(CURVE_PRESETS.keys()), default="linear")
-    p.add_argument("--curve-intensity", type=int, default=50)
-    p.add_argument("--kbd-left", type=int, default=0x04)
-    p.add_argument("--kbd-right", type=int, default=0x07)
-    p.add_argument("--kbd-up", type=int, default=0x1a)
-    p.add_argument("--kbd-down", type=int, default=0x16)
-    p.add_argument("--kbd-ol-left", type=int, default=1)
-    p.add_argument("--kbd-ol-right", type=int, default=1)
-    p.add_argument("--kbd-ol-up", type=int, default=1)
-    p.add_argument("--kbd-ol-down", type=int, default=1)
+    p.add_argument("--curve-intensity", type=int, default=100, help="Curve curvature 0-100 (types expo/s-curve)")
+    p.add_argument("--curve-points", help="Custom curve: x,y;x,y;x,y (with --curve custom)")
+    for side, default in (("up", "key:w"), ("down", "key:s"), ("left", "key:a"), ("right", "key:d"),
+                          ("outline", "key:left_shift")):
+        p.add_argument(f"--wheel-{side}", default=default,
+                       help=f"Wheel mode target for {side} (key:w, key:ctrl+a, mouse:left_click, none)")
     p.set_defaults(func=cmd_stick)
 
     # map
@@ -731,7 +749,7 @@ def main():
     # macro
     p = sub.add_parser("macro", help="Record a multi-step macro on a button")
     p.add_argument("button", help="Source button (e.g. l4, c1)")
-    p.add_argument("steps", nargs="+", help="Steps as btn:press_ms:release_ms (e.g. lb:0:50 rb:100:110)")
+    p.add_argument("steps", nargs="+", help="Steps as target:press_ms:release_ms (e.g. lb:0:50 key:a:100:150), max 12")
     p.add_argument("--hold", action="store_true", help="Hold to fire macro (fires while button held)")
     p.add_argument("--loop", action="store_true", help="Loop macro (repeat)")
     p.set_defaults(func=cmd_macro)
@@ -753,7 +771,8 @@ def main():
     p.add_argument("--antideadzone-min", type=int, default=0)
     p.add_argument("--antideadzone-max", type=int, default=100)
     p.add_argument("--curve", choices=list(CURVE_PRESETS.keys()), default="linear")
-    p.add_argument("--curve-intensity", type=int, default=50)
+    p.add_argument("--curve-intensity", type=int, default=100, help="Curve curvature 0-100 (types expo/s-curve)")
+    p.add_argument("--curve-points", help="Custom curve: x,y;x,y;x,y (with --curve custom)")
     p.add_argument("--kb-up", default="key:w", help="Keyboard up target (key:x, controller:lt, mouse:scroll_up, unbind)")
     p.add_argument("--kb-down", default="key:s")
     p.add_argument("--kb-left", default="key:a")
@@ -807,6 +826,15 @@ def main():
     p_apply.set_defaults(func=cmd_profile)
 
     p.set_defaults(func=cmd_profile)
+
+    # reset
+    p = sub.add_parser("reset", help="Factory-reset settings to the official defaults")
+    p.add_argument("sections", nargs="*", help="sticks triggers gyro mappings lighting rumble (default: all)")
+    p.set_defaults(func=cmd_reset)
+
+    # device
+    p = sub.add_parser("device", help="Battery, firmware versions and MAC")
+    p.set_defaults(func=cmd_device)
 
     # games (auto profile switch)
     p = sub.add_parser("games", help="Game-linked auto profile switching")

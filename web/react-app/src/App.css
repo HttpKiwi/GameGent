@@ -1678,3 +1678,32 @@ body {
     width: 100%;
   }
 }
+
+.hint {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  margin: 8px 0;
+}
+
+.connection-pill__battery {
+  margin-left: 6px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+  color: var(--text-secondary);
+}
+
+.reset-btn {
+  float: right;
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.reset-btn:hover:not(:disabled) {
+  border-color: var(--danger);
+  color: var(--danger);
+}

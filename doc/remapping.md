@@ -38,7 +38,8 @@ python3 main.py stick right mouse --mouse-dpi 75 --ratio 60 --invert-y
 
 # Wheel (keys) mode with WASD; outer ring = Left Shift
 python3 main.py stick left wheel --overlap 65 \
-    --kbd-up 26 --kbd-down 22 --kbd-left 4 --kbd-right 7
+    --wheel-up key:w --wheel-down key:s --wheel-left key:a --wheel-right key:d \
+    --wheel-outline key:left_shift
 
 # Clone mode
 python3 main.py stick left clone

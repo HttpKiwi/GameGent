@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useConfigStore } from '../stores/configStore';
+import { ResetButton } from '../components/ResetButton';
 import { useReadDeviceMappings } from '../hooks/useApi';
 import { SelectField, TextField, NumberField, CheckboxField, SettingCard } from '../components/ui';
 import { ControllerDiagram } from '../components/ControllerDiagram';
@@ -8,7 +9,8 @@ import { BUTTON_OPTIONS } from './buttonOptions';
 interface TurboSetting {
   target: string;
   rate: number;
-  continuous: boolean;
+  continuous: boolean; // toggle on press
+  turbo?: boolean; // false = toggle only
 }
 
 const BUTTON_LABELS: Record<string, string> = Object.fromEntries(
@@ -41,13 +43,13 @@ export function ButtonsTab() {
     setTarget(currentMapping);
     setRate(turboSetting?.rate ?? 10);
     setContinuous(turboSetting?.continuous ?? false);
-    setTurboEnabled(!!turboSetting);
+    setTurboEnabled(!!turboSetting && turboSetting.turbo !== false);
   };
 
   const handleApply = async () => {
     if (!button) return;
 
-    const turboSetting: TurboSetting = { target, rate, continuous };
+    const turboSetting: TurboSetting = { target, rate, continuous, turbo: turboEnabled };
 
     const newMappings = { ...(config.key_mappings ?? {}) };
     if (target) {
@@ -57,7 +59,7 @@ export function ButtonsTab() {
     }
 
     const newTurboSettings = { ...(config.turbo_settings ?? {}) };
-    if (turboEnabled && (rate !== 10 || continuous || target)) {
+    if ((turboEnabled || continuous) && target) {
       newTurboSettings[button] = turboSetting;
     } else {
       delete newTurboSettings[button];
@@ -110,6 +112,7 @@ export function ButtonsTab() {
     <div className="buttons-tab">
       <div className="page-header">
         <h2>Button Remapping</h2>
+      <ResetButton sections={['mappings']} what="button mappings" />
         <p className="page-description">
           Click any button on the controller diagram to select it, then set a remap target below.
         </p>
@@ -154,22 +157,20 @@ export function ButtonsTab() {
               onChange={setTarget}
             />
             <p className="field-hint">
-              Prefix with <code>key:</code>, <code>controller:</code>, or <code>mouse:</code>
+              Prefix with <code>key:</code>, <code>controller:</code>, <code>mouse:</code> or <code>media:</code>.
+              Combine with <code>+</code> (<code>key:ctrl+shift+a</code>, <code>controller:a+b</code>); modifiers
+              are <code>ctrl shift alt win</code>; media keys are <code>mute vol_down vol_up mic_mute play prev
+              stop next</code>. <code>none</code> makes the button do nothing.
             </p>
+            <CheckboxField label="Toggle on press" checked={continuous} onChange={setContinuous} />
             <CheckboxField label="Turbo" checked={turboEnabled} onChange={setTurboEnabled} />
             <div className={`card-row ${!turboEnabled ? 'disabled' : ''}`}>
               <NumberField
                 label="Turbo Rate (Hz)"
                 value={rate}
-                min={1}
+                min={2}
                 max={100}
                 onChange={setRate}
-                disabled={!turboEnabled}
-              />
-              <CheckboxField
-                label="Continuous"
-                checked={continuous}
-                onChange={setContinuous}
                 disabled={!turboEnabled}
               />
             </div>
@@ -239,7 +240,8 @@ export function ButtonsTab() {
                   <code className="mapping-target">{tgt}</code>
                   {turboData && (
                     <span className="mapping-turbo">
-                      {turboData.rate}Hz{turboData.continuous ? ' cont' : ''}
+                      {turboData.turbo !== false ? `${turboData.rate}Hz` : ''}
+                      {turboData.continuous ? ' toggle' : ''}
                     </span>
                   )}
                 </div>

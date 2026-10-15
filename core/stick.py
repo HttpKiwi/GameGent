@@ -1,13 +1,31 @@
 # core/stick.py — stick config, curve presets, packet builders
 from dataclasses import dataclass
 from typing import List
+from .hid_keycodes import KEYBOARD_USAGE, REPORT_UNBIND, build_remap_packet
+from .targets import encode_target
 from .transport import send_raw_bytes
 
+_USAGE_TO_KEY = {v: k for k, v in KEYBOARD_USAGE.items()}
+
+# Curve types (SAPJoyUniCurve): 0 linear, 1 concave/convex ("expo"), 2 S / inverse-S, 3 custom.
+# The official app writes (type, curvature, 3 points); for types 0-2 the points keep their
+# default values and only type + curvature shape the response, for "custom" they are the curve.
+DEFAULT_CURVE_POINTS = [(30, 30), (50, 50), (70, 70)]
 CURVE_PRESETS = {
-    "linear":  {"coords": [0x14, 0x10, 0x35, 0x32, 0x55, 0x54], "curve_type": 0x00},
-    "expo":    {"coords": [0x1b, 0x17, 0x35, 0x32, 0x4e, 0x4d], "curve_type": 0x01},
-    "s-curve": {"coords": [0x0e, 0x1e, 0x2c, 0x32, 0x4a, 0x46], "curve_type": 0x02},
+    "linear":  {"curve_type": 0x00},
+    "expo":    {"curve_type": 0x01},
+    "s-curve": {"curve_type": 0x02},
+    "custom":  {"curve_type": 0x03},
 }
+
+
+def curve_coords(preset: str, points=None) -> list[int]:
+    """The 6 curve bytes (3 x/y points) for a preset; custom uses `points` if given."""
+    pts = points if preset == "custom" and points else DEFAULT_CURVE_POINTS
+    if len(pts) != 3:
+        raise ValueError("A custom curve needs exactly 3 points")
+    return [max(0, min(100, int(v))) for pt in pts for v in pt]
+
 
 # "clone" = StickMapping: output as the other stick
 STICK_MODES = {"native": 0x00, "mouse": 0x01, "wheel": 0x02, "clone": 0x03}
@@ -22,26 +40,29 @@ KEYBOARD_ZONE_INDEX = {
 }
 RIGHT_STICK_ZONE_OFFSET = 4
 
-KEYBOARD_ZONE_STRUCT = [0x00, 0x00, 0x01, 0x02, 0x02, 0x00]
-# Outer ring with no key set: keyboard type, count 1, code0 = 0x02 (Left Shift modifier bit),
-# the behaviour captured from the official app. With a key set it is sent like an inner zone.
-KEYBOARD_OVERLAP_STRUCT = [0x00, 0x00, 0x01, 0x02, 0x01, 0x02]
 
 
 @dataclass
 class KeyboardMapping:
-    left: int = 0x04
-    right: int = 0x07
-    up: int = 0x1a
-    down: int = 0x16
-    overlap_left: int = 0x01
-    overlap_right: int = 0x01
-    overlap_up: int = 0x01
-    overlap_down: int = 0x01
-    left_outer: int = 0x00
-    right_outer: int = 0x00
-    up_outer: int = 0x00
-    down_outer: int = 0x00
+    """Wheel-mode targets: inner zones (up/down/left/right) and the outer ring (`outline`).
+
+    Values are mapping targets ("key:w", "key:ctrl+a", "mouse:left_click", "controller:a",
+    "none"); ints are legacy HID key usage codes. `*_outer` override one outer zone.
+    """
+    left: int | str = 0x04
+    right: int | str = 0x07
+    up: int | str = 0x1a
+    down: int | str = 0x16
+    outline: str = "key:left_shift"   # captured default for the outer ring
+    left_outer: int | str = 0
+    right_outer: int | str = 0
+    up_outer: int | str = 0
+    down_outer: int | str = 0
+    # legacy fields, ignored
+    overlap_left: int = 1
+    overlap_right: int = 1
+    overlap_up: int = 1
+    overlap_down: int = 1
 
 
 @dataclass
@@ -59,7 +80,8 @@ class StickConfig:
     deadzone_max: int = 100
     antideadzone_max: int = 100
     curve_preset: str = "linear"
-    curve_intensity: int = 50
+    curve_intensity: int = 100
+    curve_points: list | None = None
     keyboard: KeyboardMapping = None
 
     def __post_init__(self):
@@ -80,15 +102,8 @@ class StickConfig:
         if self.keyboard is None:
             self.keyboard = KeyboardMapping()
         elif not isinstance(self.keyboard, KeyboardMapping):
-            kbd = self.keyboard
-            self.keyboard = KeyboardMapping(
-                left=kbd.get("left", 0x04), right=kbd.get("right", 0x07),
-                up=kbd.get("up", 0x1a), down=kbd.get("down", 0x16),
-                overlap_left=kbd.get("overlap_left", 1), overlap_right=kbd.get("overlap_right", 1),
-                overlap_up=kbd.get("overlap_up", 1), overlap_down=kbd.get("overlap_down", 1),
-                left_outer=kbd.get("left_outer", 0x00), right_outer=kbd.get("right_outer", 0x00),
-                up_outer=kbd.get("up_outer", 0x00), down_outer=kbd.get("down_outer", 0x00),
-            )
+            known = KeyboardMapping.__dataclass_fields__
+            self.keyboard = KeyboardMapping(**{k: v for k, v in self.keyboard.items() if k in known})
 
 
 def build_targeting_packet(config: StickConfig) -> bytes:
@@ -122,7 +137,7 @@ def build_geometry_packet(config: StickConfig) -> bytes:
     packet[13] = config.deadzone_min
     packet[14] = config.antideadzone_min
     preset = CURVE_PRESETS.get(config.curve_preset, CURVE_PRESETS["linear"])
-    packet[15:21] = preset["coords"]
+    packet[15:21] = curve_coords(config.curve_preset, config.curve_points)
     packet[21] = config.deadzone_max
     packet[22] = config.antideadzone_max
     packet[23] = preset["curve_type"]
@@ -130,44 +145,33 @@ def build_geometry_packet(config: StickConfig) -> bytes:
     return bytes(packet)
 
 
-def build_keyboard_packet(zone_index: int, struct: List[int], scancode: int) -> bytes:
-    packet = bytearray(32)
-    packet[0:4] = [0x07, 0x13, 0x05, 0x01]
-    packet[4:10] = [0x00] * 6
-    packet[10] = zone_index
-    packet[11:17] = struct
-    if isinstance(scancode, str):
-        sc = scancode.strip().lower()
-        try:
-            if sc.startswith("0x"):
-                scancode = int(sc, 16)
-            else:
-                try: scancode = int(sc, 16)
-                except ValueError: scancode = int(sc, 10)
-        except ValueError:
-            scancode = 0
-    packet[17] = scancode & 0xFF
-    return bytes(packet)
+def _target(value) -> str:
+    """Target string for a wheel entry; ints are legacy HID usage codes, 0/""/None = none."""
+    if isinstance(value, int):
+        name = _USAGE_TO_KEY.get(value) if value else None
+        return f"key:{name}" if name else "none"
+    return (value or "none").strip() or "none"
+
+
+def build_zone_packet(zone_id: int, target: str) -> bytes:
+    """SetKeyMapping for a stick/gyro wheel zone (a key whose source id is the zone)."""
+    if target.lower() in ("none", "nc", "unbind"):
+        return build_remap_packet(zone_id, REPORT_UNBIND, bytes(16))
+    report, payload = encode_target(target)
+    return build_remap_packet(zone_id, report, payload)
 
 
 def _build_keyboard_sequence(config: StickConfig) -> List[bytes]:
-    packets = []
     kbd = config.keyboard
     off = RIGHT_STICK_ZONE_OFFSET if config.stick_id == 1 else 0
-    zones = [
-        (KEYBOARD_ZONE_INDEX["left"], KEYBOARD_ZONE_STRUCT, kbd.left),
-        (KEYBOARD_ZONE_INDEX["right"], KEYBOARD_ZONE_STRUCT, kbd.right),
-        (KEYBOARD_ZONE_INDEX["up"], KEYBOARD_ZONE_STRUCT, kbd.up),
-        (KEYBOARD_ZONE_INDEX["down"], KEYBOARD_ZONE_STRUCT, kbd.down),
-        (KEYBOARD_ZONE_INDEX["overlap_left"], KEYBOARD_OVERLAP_STRUCT, kbd.left_outer),
-        (KEYBOARD_ZONE_INDEX["overlap_right"], KEYBOARD_OVERLAP_STRUCT, kbd.right_outer),
-        (KEYBOARD_ZONE_INDEX["overlap_up"], KEYBOARD_OVERLAP_STRUCT, kbd.up_outer),
-        (KEYBOARD_ZONE_INDEX["overlap_down"], KEYBOARD_OVERLAP_STRUCT, kbd.down_outer),
-    ]
-    for zone_idx, struct, scancode in zones:
-        if struct is KEYBOARD_OVERLAP_STRUCT and scancode:
-            struct = KEYBOARD_ZONE_STRUCT
-        packets.append(build_keyboard_packet(zone_idx + off, struct, scancode))
+    inner = {"left": kbd.left, "right": kbd.right, "up": kbd.up, "down": kbd.down}
+    outer = {"left": kbd.left_outer, "right": kbd.right_outer, "up": kbd.up_outer, "down": kbd.down_outer}
+    packets = []
+    for name, value in inner.items():
+        packets.append(build_zone_packet(KEYBOARD_ZONE_INDEX[name] + off, _target(value)))
+    for name, value in outer.items():
+        target = _target(value) if value else _target(kbd.outline)
+        packets.append(build_zone_packet(KEYBOARD_ZONE_INDEX["overlap_" + name] + off, target))
     return packets
 
 

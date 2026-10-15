@@ -2,7 +2,7 @@ from .lighting import LIGHTING_MODES, set_hardware_state, generate_color_packet,
 from .remap import resolve_button_index, resolve_target_packet, apply_mapping, resolve_combo_keys, apply_combo, apply_macro
 from .stick import (
     StickConfig, KeyboardMapping, STICK_MODES, CURVE_PRESETS,
-    build_targeting_packet, build_geometry_packet, build_keyboard_packet,
+    build_targeting_packet, build_geometry_packet, build_zone_packet,
     generate_hardware_stream, set_stick_config,
 )
 from .rumble import set_rumble_level, fire_rumble, read_rumble_level

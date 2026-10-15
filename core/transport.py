@@ -10,20 +10,33 @@ import threading
 _DEVICE_LOCK = threading.RLock()
 
 VENDOR_ID = "3537"
-PRODUCT_ID = "103e"
+# Wireless dongle and wired USB-C use the same protocol; the app lists both for the T3Pro.
+PRODUCT_IDS = ("103e", "1050")
+PRODUCT_ID = PRODUCT_IDS[0]
+
+
+def _has_config_reports(sysfs_path: str) -> bool:
+    """Config interface = report descriptor with report IDs 06 (input) and 07 (output)."""
+    try:
+        with open(os.path.join(sysfs_path, "device", "report_descriptor"), "rb") as f:
+            desc = f.read()
+    except OSError:
+        return False
+    return b"\x85\x06" in desc and b"\x85\x07" in desc
 
 
 def find_dongle_path():
-    """Scans sysfs directory topology to locate the correct hidraw node"""
-    for sysfs_path in glob.glob("/sys/class/hidraw/hidraw*"):
-        try:
-            real_path = os.path.realpath(sysfs_path)
-            if f"{VENDOR_ID}:{PRODUCT_ID}" in real_path.lower():
-                dev_name = os.path.basename(sysfs_path)
-                return f"/dev/{dev_name}"
-        except Exception:
-            continue
-    return None
+    """hidraw node of the controller (wireless dongle preferred, then wired) that carries the
+    config reports; falls back to the first node of a matching device."""
+    found = []
+    for sysfs_path in sorted(glob.glob("/sys/class/hidraw/hidraw*")):
+        real_path = os.path.realpath(sysfs_path).lower()
+        for rank, pid in enumerate(PRODUCT_IDS):
+            if f"{VENDOR_ID}:{pid}" in real_path:
+                found.append((rank, not _has_config_reports(sysfs_path), sysfs_path))
+    if not found:
+        return None
+    return "/dev/" + os.path.basename(min(found)[2])
 
 
 class DeviceError(RuntimeError):

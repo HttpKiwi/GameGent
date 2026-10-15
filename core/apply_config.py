@@ -30,20 +30,8 @@ def _keyboard_mapping(stick: dict) -> KeyboardMapping | None:
     kbd = stick.get("keyboard")
     if not isinstance(kbd, dict):
         return None
-    return KeyboardMapping(
-        left=int(kbd.get("left", 0x04)),
-        right=int(kbd.get("right", 0x07)),
-        up=int(kbd.get("up", 0x1A)),
-        down=int(kbd.get("down", 0x16)),
-        overlap_left=int(kbd.get("overlap_left", 1)),
-        overlap_right=int(kbd.get("overlap_right", 1)),
-        overlap_up=int(kbd.get("overlap_up", 1)),
-        overlap_down=int(kbd.get("overlap_down", 1)),
-        left_outer=int(kbd.get("left_outer", 0)),
-        right_outer=int(kbd.get("right_outer", 0)),
-        up_outer=int(kbd.get("up_outer", 0)),
-        down_outer=int(kbd.get("down_outer", 0)),
-    )
+    known = KeyboardMapping.__dataclass_fields__
+    return KeyboardMapping(**{k: v for k, v in kbd.items() if k in known})
 
 
 def _build_stick(stick_id: int, stick: dict | None) -> StickConfig:
@@ -62,7 +50,8 @@ def _build_stick(stick_id: int, stick: dict | None) -> StickConfig:
         deadzone_max=int(stick.get("deadzone_max", 100)),
         antideadzone_max=int(stick.get("antideadzone_max", 100)),
         curve_preset=stick.get("curve_preset", "linear"),
-        curve_intensity=int(stick.get("curve_intensity", 50)),
+        curve_intensity=int(stick.get("curve_intensity", 100)),
+        curve_points=stick.get("curve_points"),
     )
     if cfg.mode == "wheel":
         kbd = _keyboard_mapping(stick)
@@ -79,11 +68,12 @@ def _build_trigger(trigger_id: int, trig: dict | None) -> TriggerConfig:
         hair_trigger_begin=trig.get("hair_trigger_begin"),
         hair_trigger_end=trig.get("hair_trigger_end"),
         deadzone_begin=int(trig.get("deadzone_begin", 0)),
-        deadzone_end=int(trig.get("deadzone_end", 100)),
+        deadzone_end=int(trig.get("deadzone_end", 95)),
         antideadzone_begin=int(trig.get("antideadzone_begin", 0)),
         antideadzone_end=int(trig.get("antideadzone_end", 100)),
         curve_preset=trig.get("curve_preset", "linear"),
-        curve_intensity=int(trig.get("curve_intensity", 50)),
+        curve_intensity=int(trig.get("curve_intensity", 100)),
+        curve_points=trig.get("curve_points"),
     )
 
 
@@ -108,9 +98,9 @@ def _face_hsl(face_leds: list, index: int) -> tuple[int, int, int]:
 # Config keys that feed each hardware section; used to push only what changed.
 SECTION_KEYS = {
     "lighting": ("lighting_mode", "brightness", "lighting_speed"),
-    "led": ("color_hue", "color_saturation", "color_lightness", "lighting_zone"),
+    "led": ("color_hue", "color_saturation", "color_lightness", "lighting_zone", "brightness"),
     "layout": ("layout",),
-    "face_leds": ("face_leds",),
+    "face_leds": ("face_leds", "bayx_leds"),
     "home_led": ("home_led",),
     "sticks": ("stick_left", "stick_right"),
     "triggers": ("trigger_left", "trigger_right"),
@@ -127,14 +117,25 @@ def changed_sections(old: dict, new: dict) -> set[str]:
     }
 
 
-def _apply_face_leds(config: dict) -> str:
-    face = config.get("face_leds") or []
-    if not any(face):
-        return "skipped"
+def _face_set(leds) -> list | None:
+    """4 (hue deg, sat, value) tuples from stored [hue byte, sat, value] entries, or None."""
+    leds = leds or []
+    if not any(leds):
+        return None
     # The UI shows unset buttons as red, so send what the user sees.
-    face = [face[i] if i < len(face) and face[i] else [0, 100, 50] for i in range(4)]
-    set_face_colors(*(_face_hsl(face, i) for i in range(4)))
-    return "ok"
+    leds = [leds[i] if i < len(leds) and leds[i] else [0, 100, 100] for i in range(4)]
+    return [_face_hsl(leds, i) for i in range(4)]
+
+
+def _apply_face_leds(config: dict) -> str:
+    """ABXY (Xbox layout) and BAYX (Switch layout) LED sets; each written only if present."""
+    wrote = False
+    for name, key in (("abxy", "face_leds"), ("bayx", "bayx_leds")):
+        colors = _face_set(config.get(key))
+        if colors:
+            set_face_colors(*colors, name=name)
+            wrote = True
+    return "ok" if wrote else "skipped"
 
 
 def _apply_home_led(config: dict) -> str:
@@ -167,7 +168,8 @@ def _apply_gyro(config: dict) -> str:
         invert_x=bool(g.get("invert_x", False)),
         invert_y=bool(g.get("invert_y", False)),
         curve_preset=g.get("curve_preset", "linear"),
-        curve_intensity=int(g.get("curve_intensity", 50)),
+        curve_intensity=int(g.get("curve_intensity", 100)),
+        curve_points=g.get("curve_points"),
         kb_up=g.get("kb_up", "key:w"),
         kb_down=g.get("kb_down", "key:s"),
         kb_left=g.get("kb_left", "key:a"),
@@ -207,8 +209,8 @@ def _apply_mappings(config: dict, previous: dict | None) -> str:
             apply_mapping(button, target)
             turbo = turbo_settings.get(button)
             if isinstance(turbo, dict) and target not in ("unbind", "reset"):
-                set_turbo(button, turbo.get("target") or target,
-                          int(turbo.get("rate", 10)), bool(turbo.get("continuous", False)))
+                rate = int(turbo.get("rate", 10)) if turbo.get("turbo", True) else None  # None = toggle only
+                set_turbo(button, turbo.get("target") or target, rate, bool(turbo.get("continuous", False)))
             ok += 1
         except Exception as e:
             errors.append(f"{button}: {e}")
@@ -225,11 +227,13 @@ def apply_config_to_device(config: dict, previous: dict | None = None) -> dict:
     only = None if previous is None else changed_sections(previous, config)
 
     def led_color():
-        zone = int(config.get("lighting_zone", 1))
-        set_led_color("panel" if zone == 1 else "home",
+        panel = int(config.get("lighting_zone", 1)) == 1
+        # Panel value tracks the brightness setting (as in the official app).
+        value = int(config.get("brightness", 100)) if panel else int(config.get("color_lightness", 50))
+        set_led_color("panel" if panel else "home",
                       int(config.get("color_hue", 0)),
                       int(config.get("color_saturation", 100)),
-                      int(config.get("color_lightness", 50)))
+                      value)
 
     sections = {
         "lighting": lambda: set_hardware_state(config.get("lighting_mode", "static"),

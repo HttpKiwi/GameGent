@@ -37,6 +37,26 @@ export async function getDeviceStatus(): Promise<DeviceStatus> {
   return apiCall('/status');
 }
 
+export interface DeviceInfo {
+  firmware: string;
+  mac: string;
+  battery: number | null;
+  charging: boolean;
+  dongle: { firmware: string; hardware: string } | null;
+}
+
+export async function getDeviceInfo(): Promise<DeviceInfo> {
+  return apiCall('/device');
+}
+
+export async function resetConfig(sections?: string[]): Promise<{
+  config: Record<string, unknown>;
+  profile: string | null;
+  applied: Record<string, string>;
+}> {
+  return apiCall('/reset', { method: 'POST', data: { sections } });
+}
+
 export async function fetchConfig(): Promise<Record<string, unknown>> {
   return apiCall('/config');
 }
