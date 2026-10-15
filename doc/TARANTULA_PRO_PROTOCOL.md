@@ -208,6 +208,28 @@ Bytes 27–41: live RGB of 5 LEDs. "Original" mode reports raw physical buttons 
 
 **`06 05 0a 0d [mask]` profile changed.** Mask bits: 1 sticks, 2 triggers, 4 key mappings, 5 vibration, 6/7 lights.
 
+### 6.1 Verified on hardware (2026-10-15, dongle `V0241221A`, controller 2.0.6)
+
+- **One hidraw node.** The wireless dongle shows a single node (USB interface 1) whose report descriptor
+  has the vendor usage page `0xFFA0` collection with report IDs `06` (input) and `07` (output), plus
+  keyboard/mouse collections (IDs 1, 2, 3). Config writes, replies **and** state frames all use it, so no
+  usage-page node selection is needed on wireless. (Interface 0 is XInput, bound by `xpad`, no hidraw.)
+- **State reports are off by default.** Without a mode packet the node only carries `06 00 00 00`
+  keep-alives. `07 04 0a 02 [mode]` (SetGamepadStateReport) is ACKed with status 0 on the same node:
+  mode 0 off, 1 original (physical switches, raw sticks), 2 mapped. Modes 1 and 2 stream `06 1a 0a 03`
+  frames at about 75 per second.
+- **Frame layout confirmed:** bytes 4–7 LX LY RX RY (128 = centre; raw mode shows small offsets such as
+  `79 80 81 7f`, mapped mode `80 80 80 80`), bytes 8–9 LT/RT analog 0–255, bytes 10–14 button bits as in
+  the table above (all of A B X Y LB RB LT RT L3 R3 View Menu D-pad Home Capture L4 R4 T1 T2 T3 C1 C2
+  C3 C4 observed). Byte 14 bit 6 (`0x40`) is always set; bytes 15 and up are motion-sensor data that
+  change constantly (don't use them for idle detection). `M` (byte 12 bit 2) was not pressed.
+- **Mappings don't affect raw mode.** T1 and C1 (mapped to Back), T2/T3 (Y), L4 (B) all still report
+  their own bits, and in raw mode the XInput interface still reports the *mapped* button
+  (T1/C1 → button 6, T2/T3 → button 3, A → button 0). Raw mode is therefore safe to leave on while a
+  tester is open; GameGent turns it on while the tester is connected and switches reports back **off** (mode 0, the power-up state) after 3 s idle. Mode 2 also streams, so it is not a neutral idle state.
+- **Unsolicited reports** (`06 1a 0a 03` state, `06 05 0a 0d` change push) interleave with replies, so
+  `read_response` skips them; matching replies by object/op is always safe.
+
 ## 7. Dongle firmware `V0241221A → V0250917A`
 
 - Bundled as `packages/Burn_GDF-G760402_2977_V10_250917a.ufw`; update path is `SetISPMode(dongle)` then a JieLi DFU worker. Images are encrypted, so code changes can't be diffed.

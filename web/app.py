@@ -7,7 +7,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from urllib.parse import urlsplit
 
-from flask import Flask, jsonify, request, send_from_directory
+from flask import Flask, Response, jsonify, request, send_from_directory
 
 from core import (
     set_hardware_state, LIGHTING_MODES,
@@ -107,18 +107,56 @@ def get_device_info():
         return jsonify({'error': str(e)}), 500
 
 
+def _gamepad_snapshot() -> dict:
+    """Live controller state for the in-app tester.
+
+    Prefers the dongle's vendor state report (includes L4/R4/T1-T3/C1-C4 and works with or
+    without mappings); falls back to /dev/input/js* (skips mouse/keyboard passthrough nodes,
+    WebKitGTK's Gamepad API collapses trigger/hat axes into stick axes).
+    """
+    from core.raw_state import vendor_gamepad_state
+    vendor = vendor_gamepad_state()
+    if vendor:
+        return vendor
+    from core.gamepad_read import read_gamepad_state
+    return {**read_gamepad_state(), 'source': 'js'}
+
+
 @app.route('/api/gamepad', methods=['GET'])
 def gamepad_state():
-    """Live Linux joystick state for the in-app tester.
-
-    Uses /dev/input/js* (skips GameSir mouse/keyboard passthrough) because
-    WebKitGTK's Gamepad API collapses trigger/hat axes into stick axes.
-    """
     try:
-        from core.gamepad_read import read_gamepad_state
-        return jsonify(read_gamepad_state())
+        return jsonify(_gamepad_snapshot())
     except Exception as e:
         return jsonify({'connected': False, 'error': str(e)}), 500
+
+
+@app.route('/api/gamepad/stream', methods=['GET'])
+def gamepad_stream():
+    """Server-sent events: one connection pushes the tester state whenever it changes
+    (about 50 Hz max) instead of the UI issuing a request every frame."""
+    import json
+    import time
+
+    def events():
+        last, since_write = None, 0.0
+        while True:
+            try:
+                state = _gamepad_snapshot()
+            except Exception as e:
+                state = {'connected': False, 'error': str(e)}
+            # `raw` includes motion-sensor bytes that change every frame: not a reason to send
+            key = json.dumps({k: v for k, v in state.items() if k != 'raw'}, sort_keys=True)
+            if key != last:
+                yield f"data: {json.dumps(state)}\n\n"
+                last, since_write = key, 0.0
+            elif since_write >= 1.0:
+                yield ": keep-alive\n\n"  # a failed write is how a closed tab is noticed
+                since_write = 0.0
+            time.sleep(0.02)
+            since_write += 0.02
+
+    return Response(events(), mimetype='text/event-stream',
+                    headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'})
 
 
 @app.route('/api/config', methods=['GET'])
@@ -629,6 +667,9 @@ def set_turbo_endpoint():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+
+from core.raw_state import install_exit_hooks
+install_exit_hooks()
 
 if __name__ == '__main__':
     app.run(host='127.0.0.1', port=5000, debug=False)

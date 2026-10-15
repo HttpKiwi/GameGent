@@ -128,6 +128,10 @@ def send_cmd(fd, data):
     time.sleep(0.03)
 
 
+# Reports the device sends on its own once SetGamepadStateReport is on.
+_UNSOLICITED = (bytes([0x1A, 0x0A, 0x03]), bytes([0x05, 0x0A, 0x0D]))
+
+
 def read_response(fd, timeout=0.5, header=None):
     """Read next HID input report with report ID 0x06.
 
@@ -138,6 +142,8 @@ def read_response(fd, timeout=0.5, header=None):
         try:
             d = os.read(fd, 128)
             if d[0] != 6:
+                continue
+            if d[1:4] in _UNSOLICITED:  # state frames / change pushes, never a reply
                 continue
             if header is not None:
                 if len(d) < 1 + len(header) or d[1:1 + len(header)] != header:

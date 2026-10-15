@@ -35,6 +35,7 @@ export const CONTROLLER_BUTTON_ZONES: ControllerZone[] = [
   { id: 'back', cx: 206, cy: 73, r: 8, label: 'Back' },
   { id: 'start', cx: 255, cy: 73, r: 8, label: 'Start' },
   { id: 'screenshot', cx: 230, cy: 73, r: 8, label: 'Shot' },
+  { id: 'home', cx: 230, cy: 100, r: 8, label: 'Home' },
   // Back paddles (rear — shown as gray squares below sticks)
   { id: 'l4', cx: 160.4, cy: 225, r: 22, label: 'L4', rear: true },
   { id: 'r4', cx: 301.3, cy: 225, r: 22, label: 'R4', rear: true },

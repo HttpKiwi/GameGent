@@ -1,5 +1,9 @@
+import { memo, useMemo } from 'react';
 import { ControllerDiagram } from './ControllerDiagram';
 import { useGamepadTester } from '../hooks/useGamepadTester';
+
+const noop = () => undefined;
+const Diagram = memo(ControllerDiagram);
 
 function StickReadout({ label, x, y }: { label: string; x: number; y: number }) {
   const safeX = Math.max(-1, Math.min(1, x));
@@ -23,7 +27,8 @@ function StickReadout({ label, x, y }: { label: string; x: number; y: number }) 
 
 export function LiveGamepadTester() {
   const gamepad = useGamepadTester();
-  const activeButtons = new Set(gamepad.pressed);
+  const pressedKey = gamepad.pressed.join(',');
+  const activeButtons = useMemo(() => new Set(pressedKey ? pressedKey.split(',') : []), [pressedKey]);
 
   return (
     <aside className="live-tester" aria-label="Live controller tester">
@@ -31,6 +36,11 @@ export function LiveGamepadTester() {
         <div>
           <h2>Live tester</h2>
           <p>{gamepad.connected ? 'Controller input' : 'Waiting for pad…'}</p>
+          {gamepad.source === 'vendor' && (
+            <span className="live-tester__badge" title="Reading the dongle's own state report: L4, R4, T1-T3 and C1-C4 show up, with or without a mapping">
+              Raw buttons
+            </span>
+          )}
         </div>
         <span className={`live-tester__status ${gamepad.connected ? 'is-connected' : ''}`} />
       </div>
@@ -38,10 +48,7 @@ export function LiveGamepadTester() {
       {gamepad.connected ? (
         <>
           <div className="live-tester__diagram">
-            <ControllerDiagram
-              activeButtons={activeButtons}
-              onButtonClick={() => undefined}
-            />
+            <Diagram activeButtons={activeButtons} onButtonClick={noop} />
           </div>
 
           <div className="live-tester__sticks">
@@ -69,6 +76,12 @@ export function LiveGamepadTester() {
           <p className="live-tester__device" title={gamepad.id ?? undefined}>
             {gamepad.id}
           </p>
+          {gamepad.raw && (
+            <details className="live-tester__debug">
+              <summary>Raw report</summary>
+              <code>{gamepad.raw}</code>
+            </details>
+          )}
         </>
       ) : (
         <div className="live-tester__empty">

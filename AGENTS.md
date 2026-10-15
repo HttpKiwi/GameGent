@@ -35,6 +35,8 @@ gamegent app
 - `GET/POST /api/profiles`, `POST /api/profiles/activate`, `DELETE /api/profiles/<name>` — software profiles (`core/profiles.py`)
 - `GET/POST /api/game-rules`, `GET /api/game-rules/status`, `GET /api/game-rules/processes` — game→profile auto-switch + process picker (`core/game_watcher.py`)
 - `POST /api/config/apply` — push working config to hardware (`core/apply_config.py`)
+- `GET /api/gamepad/stream` — same data as server-sent events, pushed on change (the UI uses it, falls back to polling `/api/gamepad`)
+- `GET /api/gamepad` — live tester: vendor state report when the dongle is present (`source: vendor`, all physical buttons incl. L4/R4/T1–T3/C1–C4, `core/raw_state.py`), else `/dev/input/js*` (`source: js`)
 - `GET /api/device` — battery, firmware, MAC (`core/device_info.py`); `POST /api/reset` — factory-reset config sections (`core/defaults.py`)
 - `POST /api/config/autosave` — UI edits: save working config **and active profile**, push only changed sections (`core/profiles.py:autosave_config`); 409 if the active profile changed since the client loaded it. `POST /api/config` also mirrors into the active profile.
 - UI polls status (~2s) and mappings (~4s) while connected; skips overwrite if config is dirty
@@ -43,7 +45,7 @@ gamegent app
 
 ## Live tester note
 
-WebKitGTK’s browser Gamepad API is unreliable here: it may pick GameSir mouse passthrough (`js0`) first, and it collapses trigger/hat axes into the 4 stick axes. The tester therefore polls `GET /api/gamepad`, which reads `/dev/input/js*` (xpad layout) and skips mouse/keyboard nodes.
+WebKitGTK’s browser Gamepad API is unreliable here: it may pick GameSir mouse passthrough (`js0`) first, and it collapses trigger/hat axes into the 4 stick axes. The tester therefore polls `GET /api/gamepad`: the dongle's vendor state report first (it also shows L4/R4/T1–T3/C1–C4, which XInput never sees), falling back to `/dev/input/js*` (xpad layout, skipping mouse/keyboard nodes).
 
 ## Remap read protocol (short)
 

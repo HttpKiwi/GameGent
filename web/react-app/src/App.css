@@ -1707,3 +1707,24 @@ body {
   border-color: var(--danger);
   color: var(--danger);
 }
+
+.live-tester__badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  font-size: 0.72rem;
+  color: var(--success);
+  border: 1px solid var(--success);
+  border-radius: 999px;
+}
+
+.live-tester__debug {
+  margin-top: 8px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.live-tester__debug code {
+  display: block;
+  word-break: break-all;
+}

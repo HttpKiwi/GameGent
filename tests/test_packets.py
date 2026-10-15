@@ -405,6 +405,77 @@ def test_toggle_only_does_not_turn_turbo_on():
     assert sent == [(None, True)]
 
 
+def _frame(**kw):
+    data = bytearray(32)
+    data[:4] = bytes([6, 0x1A, 0x0A, 3])
+    data[4:8] = bytes([128] * 4)
+    for k, v in kw.items():
+        data[int(k[1:])] = v
+    return bytes(data)
+
+
+def test_state_decoder_every_button_and_axes():
+    from core.raw_state import decode_state_report, BUTTON_BITS
+    names = []
+    for byte, bits in BUTTON_BITS.items():
+        for bit, name in enumerate(bits):
+            d = decode_state_report(_frame(**{f"b{byte}": 1 << bit}))
+            assert d["pressed"] == [name], (byte, bit, name)
+            names.append(name)
+    assert len(names) == 28 and {"l4", "r4", "t1", "t2", "t3", "c1", "c2", "c3", "c4", "home"} <= set(names)
+    d = decode_state_report(_frame(b4=0, b5=255, b6=128, b7=64, b8=255, b9=51))
+    assert d["leftStick"] == {"x": -1.0, "y": 1.0} and d["rightStick"]["x"] == 0
+    assert round(d["rightStick"]["y"], 2) == -0.5 and d["lt"] == 1.0 and round(d["rt"], 2) == 0.2
+    # constant 0x40 in byte 14 and motion data after it are not buttons
+    assert decode_state_report(_frame(b14=0x40, b15=255, b16=7))["pressed"] == []
+
+
+def test_state_decoder_rejects_other_reports():
+    from core.raw_state import decode_state_report, mode_packet
+    assert decode_state_report(bytes([6, 0x13, 5, 2]) + bytes(28)) is None
+    assert decode_state_report(bytes([6, 0, 0, 0])) is None
+    assert mode_packet(1) == bytes([7, 4, 0x0A, 2, 1]) and mode_packet(2)[4] == 2
+
+
+def test_read_response_skips_state_frames():
+    import socket
+    from core import transport
+    a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    a.setblocking(False)
+    try:
+        b.send(_frame())                                   # state frame first
+        b.send(bytes([6, 0x13, 3, 2, 1, 2, 3, 4, 5, 6, 7, 8]))
+        assert transport.read_response(a.fileno(), timeout=0.2)[1:4] == bytes([0x13, 3, 2])
+    finally:
+        a.close()
+        b.close()
+
+
+def test_raw_reader_enables_reads_and_restores():
+    import socket, time
+    from core import raw_state
+    a, b = socket.socketpair(socket.AF_UNIX, socket.SOCK_SEQPACKET)
+    a.setblocking(False)
+    modes = []
+    reader = raw_state.RawStateReader(open_fd=lambda: os.dup(a.fileno()), send_mode=modes.append)
+    try:
+        reader.touch()
+        b.send(_frame(b13=0x01))                           # L4 held
+        deadline = time.time() + 2
+        while time.time() < deadline:
+            state, age = reader.snapshot()
+            if state:
+                break
+            time.sleep(0.01)
+        assert state["pressed"] == ["l4"] and age < 1
+        assert modes[0] == raw_state.MODE_RAW
+    finally:
+        reader.stop()
+        a.close()
+        b.close()
+    assert modes[-1] == raw_state.MODE_OFF and reader.snapshot()[0] is None
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):

@@ -1,4 +1,6 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { apiCall } from '../api/client';
+import type { BackendGamepadState } from '../hooks/useGamepadTester';
 import { useConfigStore } from '../stores/configStore';
 import { ResetButton } from '../components/ResetButton';
 import { useReadDeviceMappings } from '../hooks/useApi';
@@ -28,6 +30,8 @@ export function ButtonsTab() {
   const [continuous, setContinuous] = useState(false);
   const [turboEnabled, setTurboEnabled] = useState(false);
   const [showAllZones, setShowAllZones] = useState(false);
+  const [detecting, setDetecting] = useState(false);
+  const [detectNote, setDetectNote] = useState('');
 
   const selectButton = (btn: string) => {
     setButton(btn);
@@ -45,6 +49,52 @@ export function ButtonsTab() {
     setContinuous(turboSetting?.continuous ?? false);
     setTurboEnabled(!!turboSetting && turboSetting.turbo !== false);
   };
+
+  // "Press a button": take the next newly pressed physical button from the dongle's raw report.
+  useEffect(() => {
+    if (!detecting) return;
+    let cancelled = false;
+    let timer = 0;
+    const started = Date.now();
+    let held: Set<string> | null = null; // buttons already down when detection started
+    const tick = async () => {
+      try {
+        const state = await apiCall<BackendGamepadState>('/gamepad');
+        if (state.source !== 'vendor') {
+          setDetectNote('Detecting physical buttons needs the GameSir dongle (raw report).');
+          setDetecting(false);
+          return;
+        }
+        const now = new Set(state.pressed);
+        if (held === null) {
+          held = now;
+        } else {
+          const fresh = BUTTON_OPTIONS.map((o) => o.value).find((v) => now.has(v) && !held!.has(v));
+          if (fresh) {
+            setDetectNote('');
+            selectButton(fresh);
+            setDetecting(false);
+            return;
+          }
+          held = new Set([...held].filter((b) => now.has(b))); // released buttons count again
+        }
+      } catch {
+        /* keep trying until the timeout */
+      }
+      if (cancelled) return;
+      if (Date.now() - started < 10000) timer = window.setTimeout(tick, 40);
+      else {
+        setDetectNote('No button pressed.');
+        setDetecting(false);
+      }
+    };
+    tick();
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detecting]);
 
   const handleApply = async () => {
     if (!button) return;
@@ -133,7 +183,7 @@ export function ButtonsTab() {
           <ControllerDiagram
             selectedButton={button}
             mappings={config.key_mappings ?? {}}
-            onButtonClick={selectButton}
+            onButtonClick={(id) => BUTTON_LABELS[id] && selectButton(id)}
             showAllZones={showAllZones}
           />
           <div className="diagram-legend">
@@ -150,6 +200,18 @@ export function ButtonsTab() {
               options={[{ value: '', label: '— Select a button —' }, ...BUTTON_OPTIONS]}
               onChange={selectButton}
             />
+            <button
+              className="form-btn form-btn-secondary"
+              onClick={() => {
+                setDetectNote('');
+                setDetecting(true);
+              }}
+              disabled={detecting}
+              title="Press the physical button you want to configure"
+            >
+              {detecting ? 'Press a button…' : 'Detect button'}
+            </button>
+            {detectNote && <p className="field-hint">{detectNote}</p>}
             <TextField
               label="Remap Target"
               value={target}
