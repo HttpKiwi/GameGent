@@ -12,8 +12,9 @@ export interface TriggerConfig {
 
 export interface StickConfig {
   mode: string;
-  x_sensitivity: number;
-  y_sensitivity: number;
+  axis_ratio: number;
+  invert_x: boolean;
+  invert_y: boolean;
   overlap_percent: number;
   mouse_x_dpi: number;
   mouse_y_dpi: number;
@@ -34,8 +35,8 @@ export interface GyroConfig {
   activate_button: string;
   x_sensitivity: number;
   y_sensitivity: number;
+  axis_ratio: number;
   overlap_percent: number;
-  mouse_dpi: number;
   deadzone_min: number;
   deadzone_max: number;
   antideadzone_min: number;

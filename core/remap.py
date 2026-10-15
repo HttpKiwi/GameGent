@@ -6,7 +6,10 @@ from .hid_keycodes import (
     keyboard_packet, mouse_button_packet, mouse_scroll_packet,
     controller_packet, unbind_packet, combo_packet,
     build_macro_init_packet, build_macro_step_packet,
+    apply_turbo, turbo_enable_packet, reset_packet,
 )
+
+SAVE_CONFIG_PAGE = bytes([0x07, 0x03, 0x08, 0x03])
 
 
 def resolve_button_index(btn: str) -> int:
@@ -45,6 +48,8 @@ def resolve_target_packet(button_index: int, target: str) -> bytes:
         raise ValueError(f"Unknown mouse target: {mouse_name}")
     if target == "unbind":
         return unbind_packet(button_index)
+    if target == "reset":
+        return reset_packet(button_index)
     if target in MOUSE_BUTTON:
         return mouse_button_packet(button_index, MOUSE_BUTTON[target])
     if target in MOUSE_SCROLL:
@@ -140,3 +145,12 @@ def apply_macro(btn: str, steps: list[tuple[str, int, int]],
     commit = bytearray(32)
     commit[0:4] = [0x07, 0x03, 0x08, 0x03]
     send_raw_bytes(commit)
+
+
+def set_turbo(btn: str, target: str, rate: int | None, continuous: bool = False):
+    """Map btn -> target with turbo (rate Hz; None = no turbo) and/or toggle, then save."""
+    index = resolve_button_index(btn)
+    remap = resolve_target_packet(index, target)
+    send_raw_bytes(apply_turbo(remap, rate or 1, continuous, turbo=rate is not None))
+    send_raw_bytes(turbo_enable_packet(index))
+    send_raw_bytes(SAVE_CONFIG_PAGE)

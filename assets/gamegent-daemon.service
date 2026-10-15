@@ -1,0 +1,15 @@
+[Unit]
+Description=GameGent game→profile watcher
+Documentation=file://%h/Projects/GameGent/README.md
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=%h/.local/bin/gamegent daemon
+Restart=on-failure
+RestartSec=3
+# Only profile auto-switch; no Flask/UI
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=default.target

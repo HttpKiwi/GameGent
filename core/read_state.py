@@ -1,6 +1,6 @@
 # core/read_state.py — full controller state read
 import os
-from .transport import open_device, init_session, read_typed_register, read_page_register, drain, read_response
+from .transport import close_device, open_device, init_session, read_typed_register, read_page_register, drain, read_response
 from .rumble import read_rumble_level
 
 
@@ -12,7 +12,7 @@ def read_lighting():
         if d and d[1] == 0x06 and d[2] == 0x07 and d[3] == 0x02:
             return (d[4], d[5], d[6])
     finally:
-        os.close(fd)
+        close_device(fd)
     return (0, 0, 0)
 
 
@@ -24,7 +24,7 @@ def read_color():
         if d and d[1] == 0x10 and d[2] == 0x07 and d[3] == 0x04:
             return (d[5], d[6], d[7])
     finally:
-        os.close(fd)
+        close_device(fd)
     return (0, 0, 0)
 
 
@@ -40,7 +40,7 @@ def read_stick_targeting(stick_id=0):
         if d and d[1] == 0x0f and d[2] == 0x02 and d[3] == 0x04:
             return d
     finally:
-        os.close(fd)
+        close_device(fd)
     return None
 
 
@@ -59,7 +59,7 @@ def read_stick_geometry(stick_id=0):
         if d and d[1] == 0x18 and d[2] == 0x02 and d[3] == 0x02:
             return d
     finally:
-        os.close(fd)
+        close_device(fd)
     return None
 
 
@@ -72,7 +72,7 @@ def read_trigger(trigger_id=0):
         if d and d[1] == 0x13 and d[2] == 0x03 and d[3] == 0x02:
             return d
     finally:
-        os.close(fd)
+        close_device(fd)
     return None
 
 
@@ -85,7 +85,7 @@ def read_layout():
         if d and d[1] == 0x07 and d[2] == 0x09 and d[3] == 0x02:
             return "xbox" if d[6] == 0x01 else "switch"
     finally:
-        os.close(fd)
+        close_device(fd)
     return None
 
 
@@ -110,7 +110,7 @@ def read_state():
         if page0202:
             state["page_02_02"] = {k: v.hex() for k, v in page0202.items()}
     finally:
-        os.close(fd)
+        close_device(fd)
 
     rumble = read_rumble_level()
     lighting = read_lighting()
@@ -126,12 +126,13 @@ def read_state():
         stick = {}
         if t:
             stick["mode"] = t[10]
-            stick["x_sensitivity"] = t[5]
-            stick["y_sensitivity"] = t[6]
+            stick["overlap_percent"] = t[5]
+            stick["invert_x"] = bool(t[8])
+            stick["invert_y"] = bool(t[9])
             stick["mouse_dpi"] = t[12]
         if g:
             stick["is_circle"] = bool(g[11])
-            stick["y_sensitivity"] = g[12]
+            stick["axis_ratio"] = g[12]
             stick["deadzone_min"] = g[13]
             stick["antideadzone_min"] = g[14]
             stick["deadzone_max"] = g[21]

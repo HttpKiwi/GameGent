@@ -3,7 +3,6 @@ import { TabLayout } from './components/TabLayout';
 import { DashboardTab } from './tabs/DashboardTab';
 import { ProfilesTab } from './tabs/ProfilesTab';
 import { LightingTab } from './tabs/LightingTab';
-import { FaceLEDsTab } from './tabs/FaceLEDsTab';
 import { TriggersTab } from './tabs/TriggersTab';
 import { SticksTab } from './tabs/SticksTab';
 import { GyroTab } from './tabs/GyroTab';
@@ -11,15 +10,18 @@ import { ButtonsTab } from './tabs/ButtonsTab';
 import { RumbleTab } from './tabs/RumbleTab';
 import { CombosTab } from './tabs/CombosTab';
 import { MacrosTab } from './tabs/MacrosTab';
+import { TurboTab } from './tabs/TurboTab';
 import {
   useConfig,
-  useSaveConfig,
+  useAutoSave,
   useDeviceStatus,
   useDeviceMappingsPoll,
   useProfiles,
   useActivateProfile,
+  useGameRulesStatus,
 } from './hooks/useApi';
 import { useConfigStore } from './stores/configStore';
+import type { AutoSaveState } from './hooks/useApi';
 import { useEffect, useState, type ChangeEvent } from 'react';
 import './App.css';
 
@@ -29,7 +31,6 @@ const TABS = [
   { id: 'dashboard', label: 'Dashboard', group: 'overview', content: <DashboardTab /> },
   { id: 'profiles', label: 'Profiles', group: 'overview', content: <ProfilesTab /> },
   { id: 'lighting', label: 'Lighting', group: 'appearance', content: <LightingTab /> },
-  { id: 'face-leds', label: 'Face LEDs', group: 'appearance', content: <FaceLEDsTab /> },
   { id: 'rumble', label: 'Rumble', group: 'appearance', content: <RumbleTab /> },
   { id: 'triggers', label: 'Triggers', group: 'controls', content: <TriggersTab /> },
   { id: 'sticks', label: 'Sticks', group: 'controls', content: <SticksTab /> },
@@ -37,6 +38,7 @@ const TABS = [
   { id: 'buttons', label: 'Buttons', group: 'controls', content: <ButtonsTab /> },
   { id: 'combos', label: 'Combos', group: 'advanced', content: <CombosTab /> },
   { id: 'macros', label: 'Macros', group: 'advanced', content: <MacrosTab /> },
+  { id: 'turbo', label: 'Turbo', group: 'advanced', content: <TurboTab /> },
 ];
 
 function ConnectionIndicator() {
@@ -109,12 +111,31 @@ function ProfileSwitcher() {
   );
 }
 
+function SaveStatus({ state }: { state: AutoSaveState }) {
+  if (state.status === 'saving') return <span className="save-status">Saving…</span>;
+  if (state.status === 'error') {
+    return <span className="save-status save-status--error">Not saved: {state.message}</span>;
+  }
+  if (state.status === 'saved') {
+    const where = state.profile ? ` to profile “${state.profile}”` : '';
+    return (
+      <span className="save-status">
+        Saved{where}
+        {state.failed.length > 0 && (
+          <span className="save-status--error"> · not applied to controller: {state.failed.join('; ')}</span>
+        )}
+      </span>
+    );
+  }
+  return <span className="save-status">Changes save and apply automatically</span>;
+}
+
 function AppContent() {
   const { data: serverConfig } = useConfig();
   const setConfigFromServer = useConfigStore((s) => s.setConfigFromServer);
-  const config = useConfigStore((s) => s.config);
-  const isDirty = useConfigStore((s) => s.isDirty);
-  const saveConfig = useSaveConfig();
+  const autoSave = useAutoSave();
+  // Keep profiles/config in sync when game auto-switch activates a profile.
+  useGameRulesStatus();
 
   useEffect(() => {
     if (serverConfig) {
@@ -141,13 +162,7 @@ function AppContent() {
       <TabLayout tabs={TABS} />
 
       <footer className="app-footer">
-        <button
-          className={`global-save-btn ${isDirty ? 'global-save-btn--dirty' : ''}`}
-          onClick={() => saveConfig.mutate(config)}
-          disabled={saveConfig.isPending}
-        >
-          {saveConfig.isPending ? 'Saving…' : isDirty ? 'Save Configuration •' : 'Save All Configuration'}
-        </button>
+        <SaveStatus state={autoSave} />
       </footer>
     </div>
   );

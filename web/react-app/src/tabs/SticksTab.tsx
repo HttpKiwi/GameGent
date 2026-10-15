@@ -1,6 +1,5 @@
 import { useConfigStore } from '../stores/configStore';
-import { useSticks, useSaveConfig } from '../hooks/useApi';
-import { SelectField, RangeSlider, SettingCard } from '../components/ui';
+import { SelectField, RangeSlider, SettingCard, CheckboxField } from '../components/ui';
 
 const STICK_MODES = [
   { value: 'native', label: 'Native' },
@@ -23,6 +22,7 @@ const CURVE_OPTIONS = [
 type Side = 'left' | 'right';
 
 function getSensitivity(stick: Record<string, unknown>): number {
+  if (stick.axis_ratio !== undefined) return stick.axis_ratio as number;
   if (stick.sensitivity !== undefined) return stick.sensitivity as number;
   if (stick.y_sensitivity !== undefined) return stick.y_sensitivity as number;
   return 50;
@@ -31,57 +31,13 @@ function getSensitivity(stick: Record<string, unknown>): number {
 export function SticksTab() {
   const config = useConfigStore((s) => s.config);
   const setConfig = useConfigStore((s) => s.setConfig);
-  const sticks = useSticks();
-  const saveConfig = useSaveConfig();
 
-  const handleApply = async () => {
-    const left = config.stick_left ?? {};
-    const right = config.stick_right ?? {};
-
-    const leftSens = getSensitivity(left);
-    const rightSens = getSensitivity(right);
-
-    const leftData = {
-      mode: left.mode,
-      x_sens: leftSens,
-      y_sens: 100 - leftSens,
-      overlap: left.overlap_percent,
-      mouse_dpi: left.mouse_dpi,
-      square: left.is_circle === false,
-      deadzone_min: left.deadzone_min,
-      antideadzone_min: left.antideadzone_min,
-      deadzone_max: left.deadzone_max,
-      antideadzone_max: left.antideadzone_max,
-      curve: left.curve_preset,
-      curve_intensity: left.curve_intensity,
-    };
-    const rightData = {
-      mode: right.mode,
-      x_sens: rightSens,
-      y_sens: 100 - rightSens,
-      overlap: right.overlap_percent,
-      mouse_dpi: right.mouse_dpi,
-      square: right.is_circle === false,
-      deadzone_min: right.deadzone_min,
-      antideadzone_min: right.antideadzone_min,
-      deadzone_max: right.deadzone_max,
-      antideadzone_max: right.antideadzone_max,
-      curve: right.curve_preset,
-      curve_intensity: right.curve_intensity,
-    };
-
-    await sticks.mutateAsync({ left: leftData, right: rightData });
-    await saveConfig.mutateAsync(config);
-  };
 
   return (
     <div>
       <h2>Sticks</h2>
       <StickSection label="Left Stick" side="left" config={config} setConfig={setConfig} />
       <StickSection label="Right Stick" side="right" config={config} setConfig={setConfig} />
-      <button className="save-btn" onClick={handleApply}>
-        Apply Sticks
-      </button>
     </div>
   );
 }
@@ -125,17 +81,29 @@ function StickSection({
         </SettingCard>
 
         {(s.mode as string) !== 'mouse' && (
-          <SettingCard title="Sensitivity" span={2}>
+          <SettingCard title="Axes" span={2}>
             <RangeSlider
-              label="Sensitivity"
+              label="X/Y Ratio (50 = equal)"
               value={getSensitivity(s)}
               min={0}
               max={100}
-              onChange={(v) => set({ sensitivity: v })}
+              onChange={(v) => set({ axis_ratio: v })}
             />
+            <div className="card-row">
+              <CheckboxField
+                label="Invert X"
+                checked={(s.invert_x as boolean) ?? false}
+                onChange={(v) => set({ invert_x: v })}
+              />
+              <CheckboxField
+                label="Invert Y"
+                checked={(s.invert_y as boolean) ?? false}
+                onChange={(v) => set({ invert_y: v })}
+              />
+            </div>
             {(s.mode as string) === 'wheel' && (
               <RangeSlider
-                label="Overlap"
+                label="Diagonal Angle"
                 value={(s.overlap_percent as number) ?? 50}
                 min={0}
                 max={100}

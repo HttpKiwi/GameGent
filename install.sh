@@ -7,8 +7,11 @@ TARGET="${BIN_DIR}/gamegent"
 APPS_DIR="${HOME}/.local/share/applications"
 DESKTOP_FILE="${APPS_DIR}/gamegent.desktop"
 ICON_PATH="${PROJECT_DIR}/assets/gamegent.svg"
+SYSTEMD_USER_DIR="${HOME}/.config/systemd/user"
+SERVICE_SRC="${PROJECT_DIR}/assets/gamegent-daemon.service"
+SERVICE_DST="${SYSTEMD_USER_DIR}/gamegent-daemon.service"
 
-mkdir -p "${BIN_DIR}" "${APPS_DIR}"
+mkdir -p "${BIN_DIR}" "${APPS_DIR}" "${SYSTEMD_USER_DIR}"
 chmod +x "${PROJECT_DIR}/main.py"
 ln -sf "${PROJECT_DIR}/main.py" "${TARGET}"
 
@@ -31,12 +34,20 @@ Categories=Utility;Settings;Game;
 StartupNotify=true
 EOF
 
+# Point ExecStart at this install's gamegent
+sed "s|^ExecStart=.*|ExecStart=${TARGET} daemon|" "${SERVICE_SRC}" > "${SERVICE_DST}"
+
 if command -v update-desktop-database >/dev/null 2>&1; then
   update-desktop-database "${APPS_DIR}" >/dev/null 2>&1 || true
 fi
 
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl --user daemon-reload >/dev/null 2>&1 || true
+fi
+
 echo "Installed gamegent → ${TARGET}"
 echo "Installed desktop entry → ${DESKTOP_FILE}"
+echo "Installed user systemd unit → ${SERVICE_DST}"
 echo
 echo "Desktop app needs pywebview in the project venv (not system pip):"
 echo "  ./venv/bin/pip install -r requirements.txt"
@@ -44,6 +55,11 @@ echo "  # Arch GUI backend:"
 echo "  #   sudo pacman -S python-gobject webkit2gtk-4.1"
 echo "  # venv/pyvenv.cfg must have: include-system-site-packages = true"
 echo
-echo "Run: gamegent app"
+echo "Run UI:     gamegent app"
 echo "  or open GameGent from your app menu"
 echo "Browser UI: gamegent serve"
+echo
+echo "Profile watcher daemon (no UI — only game→profile auto-switch):"
+echo "  gamegent daemon"
+echo "  systemctl --user enable --now gamegent-daemon"
+echo "  # Don't run daemon + app/serve watcher at once; they share a lock."

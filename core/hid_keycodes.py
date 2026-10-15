@@ -159,18 +159,28 @@ def unbind_packet(button_index: int) -> bytes:
     return build_remap_packet(button_index, REPORT_UNBIND, payload)
 
 
+# Factory mappings that differ from "map to itself" (spec §5.7): C1/C2 → View,
+# C3/C4 → Menu, T3 → Capture.
+FACTORY_TARGET = {0x29: 0x0a, 0x2a: 0x0a, 0x2b: 0x0b, 0x2c: 0x0b, 0x28: 0x2d}
+
+
+def reset_packet(button_index: int) -> bytes:
+    """Restore a button's factory mapping. An unmapped button is the joystick type
+    pointing at itself; unbind_packet (vacant) makes the button do nothing."""
+    return controller_packet(button_index, FACTORY_TARGET.get(button_index, button_index))
+
+
 def apply_turbo(remap_packet: bytes, rate_hz: int = 10, continuous: bool = False, turbo: bool = True) -> bytes:
-    """Inject turbo/continuous flags into a remap packet at bytes 11-13.
-    
-    byte 11: continuous toggle (0x00=off, 0x01=on)
-    byte 12: turbo mode (0x02=on, 0x00=off)
-    byte 13: rate Hz (when turbo on) or 0x01
+    """Inject toggle/turbo into a SetKeyMapping packet: b11 toggle, b12 turboMode, b13 turboTimes.
+
+    turboMode follows the official app: rate >= 20 -> C(3), >= 12 -> B(2), > 1 -> A(1), else off.
     """
-    rate = max(1, min(255, rate_hz))
+    rate = max(1, min(255, rate_hz)) if turbo else 1
+    mode = 3 if rate >= 20 else 2 if rate >= 12 else 1 if rate > 1 else 0
     pkt = bytearray(remap_packet)
     pkt[11] = 0x01 if continuous else 0x00
-    pkt[12] = 0x02 if turbo else 0x00
-    pkt[13] = rate if turbo else 0x01
+    pkt[12] = mode
+    pkt[13] = rate if mode else 0x01
     return bytes(pkt)
 
 
@@ -213,7 +223,7 @@ def combo_packet(button_index: int, keys: list[int], key_types: list[str]) -> by
 
 
 def turbo_enable_packet(button_index: int) -> bytes:
-    """Build turbo enable/commit packet (07 13 01 01)."""
+    """SetMacroStep with index 0xFF = clear this button's macro steps (07 13 01 01 [btn] ff)."""
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x13, 0x01, 0x01]
     packet[4] = button_index

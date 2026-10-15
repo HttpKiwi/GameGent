@@ -9,15 +9,22 @@ CURVE_PRESETS = {
     "s-curve": {"coords": [0x0e, 0x1e, 0x2c, 0x32, 0x4a, 0x46], "curve_type": 0x02},
 }
 
+# "clone" = StickMapping: output as the other stick
 STICK_MODES = {"native": 0x00, "mouse": 0x01, "wheel": 0x02, "clone": 0x03}
 
+SAVE_CONFIG_PAGE = bytes([0x07, 0x03, 0x08, 0x03]) + bytes(28)
+
+# Wheel-mode key zones (SAPJoyUniKey): inner L/R/U/D, outer L/R/U/D. Right stick = left + 4.
 KEYBOARD_ZONE_INDEX = {
     "left": 0x10, "right": 0x11, "up": 0x12, "down": 0x13,
     "overlap_left": 0x18, "overlap_right": 0x19,
     "overlap_up": 0x1a, "overlap_down": 0x1b,
 }
+RIGHT_STICK_ZONE_OFFSET = 4
 
 KEYBOARD_ZONE_STRUCT = [0x00, 0x00, 0x01, 0x02, 0x02, 0x00]
+# Outer ring with no key set: keyboard type, count 1, code0 = 0x02 (Left Shift modifier bit),
+# the behaviour captured from the official app. With a key set it is sent like an inner zone.
 KEYBOARD_OVERLAP_STRUCT = [0x00, 0x00, 0x01, 0x02, 0x01, 0x02]
 
 
@@ -41,9 +48,10 @@ class KeyboardMapping:
 class StickConfig:
     stick_id: int = 0
     mode: str = "native"
-    x_sensitivity: int = 50
-    y_sensitivity: int = 50
-    overlap_percent: int = 50
+    axis_ratio: int = 50          # SetStickCurve b12: X/Y ratio, 50 = equal
+    overlap_percent: int = 50     # SetStickMapping b5: cross/diagonal angle
+    invert_x: bool = False
+    invert_y: bool = False
     mouse_dpi: int = 50
     is_circle: bool = True
     deadzone_min: int = 5
@@ -57,8 +65,7 @@ class StickConfig:
     def __post_init__(self):
         self.stick_id = max(0, min(1, self.stick_id))
         self.mode = self.mode.lower() if self.mode.lower() in STICK_MODES else "native"
-        self.x_sensitivity = max(0, min(100, self.x_sensitivity))
-        self.y_sensitivity = max(0, min(100, self.y_sensitivity))
+        self.axis_ratio = max(0, min(100, self.axis_ratio))
         self.overlap_percent = max(0, min(100, self.overlap_percent))
         self.mouse_dpi = max(0, min(100, self.mouse_dpi))
         self.is_circle = bool(self.is_circle)
@@ -88,15 +95,18 @@ def build_targeting_packet(config: StickConfig) -> bytes:
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x0f, 0x02, 0x03]
     packet[4] = config.stick_id & 0x01
-    packet[5] = config.overlap_percent if config.mode == "wheel" else config.x_sensitivity
-    packet[6] = 0x28
-    packet[7] = 0x50
-    packet[8:10] = [0x00, 0x00]
+    packet[5] = config.overlap_percent
+    packet[6] = 0x28  # innerTriggerRange (app: always 40)
+    packet[7] = 0x50  # outerTriggerRange (app: always 80)
+    packet[8] = int(config.invert_x)
+    packet[9] = int(config.invert_y)
     packet[10] = STICK_MODES.get(config.mode, 0x00)
     packet[11] = 0x01
-    packet[12] = config.mouse_dpi if config.mode == "mouse" else 0x00
-    packet[13] = 0x00
-    print(f"[DEBUG] build_targeting: mode={config.mode} x_sens={config.x_sensitivity} y_sens={config.y_sensitivity} dpi={config.mouse_dpi}")
+    dpi = config.mouse_dpi if config.mode == "mouse" else 0x00
+    packet[12] = dpi
+    packet[13] = dpi
+    packet[14] = int(config.invert_x)
+    packet[15] = int(config.invert_y)
     return bytes(packet)
 
 
@@ -108,7 +118,7 @@ def build_geometry_packet(config: StickConfig) -> bytes:
     else:
         packet[4:11] = [0x00] * 7
     packet[11] = 0x01 if config.is_circle else 0x00
-    packet[12] = config.y_sensitivity
+    packet[12] = config.axis_ratio
     packet[13] = config.deadzone_min
     packet[14] = config.antideadzone_min
     preset = CURVE_PRESETS.get(config.curve_preset, CURVE_PRESETS["linear"])
@@ -117,7 +127,6 @@ def build_geometry_packet(config: StickConfig) -> bytes:
     packet[22] = config.antideadzone_max
     packet[23] = preset["curve_type"]
     packet[24] = config.curve_intensity
-    print(f"[DEBUG] build_geometry_packet: stick_id={config.stick_id} y_sensitivity={config.y_sensitivity} -> byte12={config.y_sensitivity}")
     return bytes(packet)
 
 
@@ -144,6 +153,7 @@ def build_keyboard_packet(zone_index: int, struct: List[int], scancode: int) -> 
 def _build_keyboard_sequence(config: StickConfig) -> List[bytes]:
     packets = []
     kbd = config.keyboard
+    off = RIGHT_STICK_ZONE_OFFSET if config.stick_id == 1 else 0
     zones = [
         (KEYBOARD_ZONE_INDEX["left"], KEYBOARD_ZONE_STRUCT, kbd.left),
         (KEYBOARD_ZONE_INDEX["right"], KEYBOARD_ZONE_STRUCT, kbd.right),
@@ -155,25 +165,22 @@ def _build_keyboard_sequence(config: StickConfig) -> List[bytes]:
         (KEYBOARD_ZONE_INDEX["overlap_down"], KEYBOARD_OVERLAP_STRUCT, kbd.down_outer),
     ]
     for zone_idx, struct, scancode in zones:
-        packets.append(build_keyboard_packet(zone_idx, struct, scancode))
+        if struct is KEYBOARD_OVERLAP_STRUCT and scancode:
+            struct = KEYBOARD_ZONE_STRUCT
+        packets.append(build_keyboard_packet(zone_idx + off, struct, scancode))
     return packets
 
 
 def generate_hardware_stream(left_cfg: StickConfig, right_cfg: StickConfig) -> List[bytes]:
     left_cfg.stick_id = 0
     right_cfg.stick_id = 1
-    p0 = build_targeting_packet(left_cfg)
-    p1 = build_geometry_packet(left_cfg)
-    if left_cfg.mode == "keyboard":
-        kbd_seq = _build_keyboard_sequence(left_cfg)
-        p2 = build_targeting_packet(right_cfg)
-        p3 = build_geometry_packet(right_cfg)
-        commit = bytes.fromhex("0703080300000000000000000000000000000000000000000000000000000000")
-        return [p0, p1] + kbd_seq + [p2, p3, commit]
-    p2 = build_targeting_packet(right_cfg)
-    p3 = build_geometry_packet(right_cfg)
-    p4 = bytes.fromhex("0703080300000000000000000000000000000000000000000000000000000000")
-    return [p0, p1, p2, p3, p4]
+    packets = []
+    for cfg in (left_cfg, right_cfg):
+        packets += [build_targeting_packet(cfg), build_geometry_packet(cfg)]
+        if cfg.mode == "wheel":
+            packets += _build_keyboard_sequence(cfg)
+    packets.append(SAVE_CONFIG_PAGE)
+    return packets
 
 
 def set_stick_config(left_cfg: StickConfig, right_cfg: StickConfig):

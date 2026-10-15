@@ -3,6 +3,11 @@ import os
 import glob
 import time
 import fcntl
+import threading
+
+# One HID conversation at a time (Flask threads + game watcher share the fd).
+# Re-entrant so a thread holding an open fd can still call send_raw_bytes.
+_DEVICE_LOCK = threading.RLock()
 
 VENDOR_ID = "3537"
 PRODUCT_ID = "103e"
@@ -21,33 +26,76 @@ def find_dongle_path():
     return None
 
 
-def send_raw_bytes(payload):
-    """Injects a 32-byte payload straight into the kernel"""
+class DeviceError(RuntimeError):
+    """Device rejected a write (non-zero status) or never acknowledged it."""
+
+
+def read_reply(fd, obj, op, timeout=0.5):
+    """Next input report 06 [len] [obj] [op] …, skipping state reports; None on timeout.
+    Match on obj/op only: the length byte differs between firmware versions."""
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        try:
+            d = os.read(fd, 128)
+        except (BlockingIOError, OSError):
+            time.sleep(0.005)
+            continue
+        if len(d) > 4 and d[0] == 0x06 and d[2] == obj and d[3] == op:
+            return d
+    return None
+
+
+def _wait_ack(fd, obj, op, timeout):
+    """Status byte of the SET reply 06 04 [obj] [op] [status], or None on timeout."""
+    reply = read_reply(fd, obj, op, timeout)
+    return None if reply is None else reply[4]
+
+
+def send_raw_bytes(payload, timeout=0.5):
+    """Write one 32-byte report. Config writes (report 0x07) wait for the device's
+    status reply (the official DLL also waits 500 ms) and raise DeviceError on failure."""
     device_path = find_dongle_path()
     if not device_path:
         raise FileNotFoundError("GameSir Dongle not found in system topologies.")
 
-    if isinstance(payload, (bytes, bytearray)):
-        payload = list(payload)
+    packet = bytes(payload).ljust(32, b"\x00")
 
-    padded_payload = payload + [0x00] * (32 - len(payload))
-
-    fd = os.open(device_path, os.O_RDWR | os.O_NONBLOCK)
-    try:
-        os.write(fd, bytes(padded_payload))
-    finally:
-        os.close(fd)
+    with _DEVICE_LOCK:
+        fd = os.open(device_path, os.O_RDWR | os.O_NONBLOCK)
+        try:
+            os.write(fd, packet)
+            if packet[0] != 0x07:
+                return
+            status = _wait_ack(fd, packet[2], packet[3], timeout)
+        finally:
+            os.close(fd)
+    if status is None:
+        raise DeviceError(f"No reply to {packet[:4].hex(' ')} within {timeout}s")
+    if status != 0:
+        raise DeviceError(f"Device rejected {packet[:4].hex(' ')} with status 0x{status:02x}")
 
 
 def open_device():
-    """Open persistent hidraw fd for read operations."""
+    """Open hidraw fd and take the device lock. Always pair with close_device(fd)."""
     path = find_dongle_path()
     if not path:
         raise FileNotFoundError("GameSir Dongle not found.")
-    fd = os.open(path, os.O_RDWR)
-    flags = fcntl.fcntl(fd, fcntl.F_GETFL)
-    fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    _DEVICE_LOCK.acquire()
+    try:
+        fd = os.open(path, os.O_RDWR)
+        flags = fcntl.fcntl(fd, fcntl.F_GETFL)
+        fcntl.fcntl(fd, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+    except BaseException:
+        _DEVICE_LOCK.release()
+        raise
     return fd
+
+
+def close_device(fd):
+    try:
+        os.close(fd)
+    finally:
+        _DEVICE_LOCK.release()
 
 
 def drain(fd, max_reads=30):
@@ -90,7 +138,7 @@ def read_response(fd, timeout=0.5, header=None):
 
 
 def init_session(fd):
-    """Initialize config session: mode switch + 07 03 0a 01 x2."""
+    """Unknown report-1 write, then GetDeviceInfo (07 03 0a 01) twice. Not a mode switch."""
     send_cmd(fd, bytes([0x01, 0x00]))
     time.sleep(0.04)
     send_cmd(fd, bytes([0x07, 0x03, 0x0a, 0x01]) + b'\x00' * 28)

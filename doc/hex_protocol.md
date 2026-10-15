@@ -5,7 +5,7 @@
 GameGent is a native Linux tool for configuring the GameSir Tarantula Pro controller via USB HID. It communicates directly with the controller's USB HID interface using 32-byte packets to configure:
 
 - Lighting modes and colors
-- Stick behavior (native, mouse, keyboard, clone modes)
+- Stick behavior (native, mouse, wheel, clone modes)
 - Gyro/motion aim
 - Button remapping (write + read), combos, and macros
 - Trigger deadzones and hair trigger
@@ -59,7 +59,15 @@ Reads a specific register from a configuration page (little-endian register word
 Header: 07 05 05 02 00 [button_index]
 ```
 GameSir remap reads use a **leading zero** before the button index (not LE `[btn] 00`).
-Responses must be matched with header `06 13 05 02` (see `core/read_remap.py`).
+Responses must be matched with header `06 13 05 02` **and button id at byte 10**
+(replies can lag / arrive out of order — see `core/read_remap.py`).
+
+**Macro Step Read**:
+```
+OUT: 07 13 01 02 [button] [step]
+IN:  06 13 01 02 [button] [step] …
+```
+Used when the remap slot report type is `00 00` (macro init / not a simple remap).
 
 **Typed Register Read** (`read_typed_register`):
 ```
@@ -130,14 +138,14 @@ Bytes 14-16: Y button (hue, saturation, lightness)
 
 ### core/stick.py
 
-**Purpose**: Stick configuration (modes, curves, keyboard mapping, mouse DPI).
+**Purpose**: Stick configuration (modes, curves, wheel-mode keys, mouse DPI, invert).
 
 **Stick Modes**:
 ```
 native:    0x00
 mouse:     0x01
-keyboard:  0x02
-clone:     0x03
+wheel:     0x02   (keys)
+clone:     0x03   (output as the other stick)
 ```
 
 **Curve Presets** (coords are 6 bytes, curve_type is 1 byte):
@@ -151,14 +159,14 @@ s-curve:   coords=[0x0e,0x1e,0x2c,0x32,0x4a,0x46], curve_type=0x02
 ```
 Header: 07 0f 02 03
 Byte 4:  stick_id (0=left, 1=right)
-Byte 5:  overlap_percent (keyboard mode) or x_sensitivity
-Byte 6:  y_sensitivity
-Byte 7:  0x50 (fixed)
-Bytes 8-9: 0x00 (padding)
+Byte 5:  diagonal angle / overlap %
+Byte 6:  0x28 (innerTriggerRange)
+Byte 7:  0x50 (outerTriggerRange)
+Bytes 8-9: invert X / invert Y
 Byte 10: mode byte
 Byte 11: 0x01 (fixed)
-Byte 12: mouse_x_dpi (mouse mode only)
-Byte 13: mouse_y_dpi (mouse mode only)
+Bytes 12-13: mouse DPI X / Y (mouse mode only)
+Bytes 14-15: invert X / invert Y (again)
 ```
 
 **Geometry Packet** (`build_geometry_packet`):
@@ -194,7 +202,7 @@ KEYBOARD_ZONE_STRUCT:     [0x00, 0x00, 0x01, 0x02, 0x02, 0x00]
 KEYBOARD_OVERLAP_STRUCT:   [0x00, 0x00, 0x01, 0x02, 0x01, 0x02]
 ```
 
-**Commit Packet**:
+**Save Packet** (SaveConfigPage):
 ```
 07 03 08 03 [28 bytes of 0x00]
 ```
@@ -229,16 +237,16 @@ always:  0x03
 
 **Axis Modes**:
 ```
-global: 0x00
-yaw:    0x01
-roll:   0x02
+yaw:    0x00   (YZ)
+roll:   0x01   (XY)
+global: 0x02   (XYZ)
 ```
 
 **Gyro Geometry Packet** (`build_gyro_geometry`):
 ```
 Header: 07 16 04 01
 Bytes 4-9: 0x00 (padding)
-Byte 10: x_sensitivity (0-100)
+Byte 10: axis_ratio (0-100, 50 = equal)
 Byte 11: deadzone_min (0-100)
 Byte 12: antideadzone_min (0-100)
 Bytes 13-18: curve coords (6 bytes)
@@ -251,24 +259,25 @@ Byte 22: curve_intensity (0-100)
 **Gyro Targeting Packet** (`build_gyro_targeting`):
 ```
 Header: 07 0e 04 03
-Byte 4:  x_sensitivity (0-100)
-Byte 5:  y_sensitivity (0-100)
+Byte 4:  diagonal angle / overlap % (keyboard output)
+Byte 5:  outputTriggerRange (app default 40)
 Byte 6:  output_mode byte
 Byte 7:  motion_mode byte
 Byte 8:  axis_mode byte
 Byte 9:  activate_button (button index)
 Byte 10: activate_method byte
-Bytes 11-12: 0x32 (fixed)
+Byte 11: x_sensitivity (0-100)
+Byte 12: y_sensitivity (0-100)
 Byte 13: 0x01=invert_x, 0x00=normal
 Byte 14: 0x01=invert_y, 0x00=normal
 ```
 
 **Gyro Keyboard Direction Zones**:
 ```
-up:    0x20
-down:  0x21
-left:  0x22
-right: 0x23
+left:  0x20
+right: 0x21
+up:    0x22
+down:  0x23
 ```
 
 **Gyro Keyboard Packet** (via `resolve_gyro_direction_packet`):

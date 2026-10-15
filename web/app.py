@@ -5,8 +5,9 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from urllib.parse import urlsplit
+
 from flask import Flask, jsonify, request, send_from_directory
-from flask_cors import CORS
 
 from core import (
     set_hardware_state, LIGHTING_MODES,
@@ -23,16 +24,42 @@ from core import (
     load_config, save_config,
     read_button_mappings,
 )
-from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE, apply_turbo, turbo_enable_packet
-from core.remap import resolve_button_index, resolve_target_packet
-from core.transport import open_device, find_dongle_path
+from core.read_remap import read_button_mappings_detailed
+from core.hid_keycodes import CONTROLLER_BUTTON, CONTROLLER_SOURCE
+from core.remap import set_turbo
+from core.transport import find_dongle_path
 from core.profiles import (
     list_profiles, save_profile, delete_profile, activate_profile, get_active_profile,
+    save_working_config, autosave_config, ProfileChanged,
 )
 from core.apply_config import apply_config_to_device
+from core.game_watcher import (
+    load_game_rules,
+    save_game_rules,
+    get_watcher_status,
+    start_game_watcher,
+    tick as game_watcher_tick,
+    list_pickable_processes,
+)
 
 app = Flask(__name__)
-CORS(app)
+
+
+@app.before_request
+def reject_foreign_host():
+    """Local-only API: refuse other Host headers so a web page can't reach it via DNS rebinding."""
+    host = urlsplit("//" + request.host).hostname
+    if host not in ("127.0.0.1", "localhost", "::1"):
+        return jsonify({"error": "forbidden host"}), 403
+
+# Auto-switch profiles when a linked game process is detected.
+# Skips if `gamegent daemon` (or another host) already holds the watcher lock.
+if not start_game_watcher():
+    import sys
+    print(
+        "GameGent: profile watcher not started (another watcher holds the lock).",
+        file=sys.stderr,
+    )
 
 REACT_DIST = os.path.join(os.path.dirname(__file__), 'react-app', 'dist')
 USE_REACT = os.path.exists(os.path.join(REACT_DIST, 'index.html'))
@@ -94,11 +121,26 @@ def get_config():
 
 @app.route('/api/config', methods=['POST'])
 def save_config_endpoint():
-    """Save config.json."""
+    """Save config.json and mirror it into the active profile."""
     try:
-        config = request.json
-        save_config(config)
+        save_working_config(request.json)
         return jsonify({'success': True})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/config/autosave', methods=['POST'])
+def autosave_config_endpoint():
+    """Save to working config + active profile and push only the changed sections.
+
+    Body: {config, profile}. `profile` is the profile the client believes is active;
+    409 if it changed meanwhile (e.g. game auto-switch) so a stale edit can't overwrite it.
+    """
+    try:
+        data = request.json or {}
+        return jsonify({'success': True, **autosave_config(data['config'], expected_profile=data.get('profile'))})
+    except ProfileChanged as e:
+        return jsonify({'error': 'active profile changed', 'active': str(e.args[0])}), 409
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -180,6 +222,58 @@ def delete_profile_endpoint(name):
         return jsonify({'error': str(e)}), 404
     except ValueError as e:
         return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/game-rules', methods=['GET'])
+def get_game_rules():
+    """Get game→profile auto-switch rules."""
+    try:
+        return jsonify(load_game_rules())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/game-rules', methods=['POST'])
+def set_game_rules():
+    """Replace game→profile auto-switch rules."""
+    try:
+        data = request.json or {}
+        saved = save_game_rules(data)
+        return jsonify({'success': True, **saved})
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/game-rules/status', methods=['GET'])
+def game_rules_status():
+    """Watcher status: active game, last match, errors."""
+    try:
+        return jsonify(get_watcher_status())
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/game-rules/processes', methods=['GET'])
+def game_rules_processes():
+    """List running processes for the portal-style binder picker."""
+    try:
+        return jsonify({'processes': list_pickable_processes()})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/game-rules/tick', methods=['POST'])
+def game_rules_tick():
+    """Force one watcher tick (debug / immediate apply)."""
+    try:
+        data = request.json or {}
+        apply = data.get('apply', True)
+        status = game_watcher_tick(apply=bool(apply))
+        return jsonify({'success': True, **status})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
@@ -316,16 +410,15 @@ def set_stick_endpoint():
             # Dual stick configuration
             left_data = data['left']
             right_data = data['right']
-            print(f"[DEBUG] /api/stick left: {left_data}")
-            print(f"[DEBUG] /api/stick right: {right_data}")
 
             left_cfg = StickConfig(
                 stick_id=0,
                 mode=left_data.get('mode', 'native'),
-                x_sensitivity=left_data.get('x_sens', 50),
-                y_sensitivity=left_data.get('y_sens', 50),
+                axis_ratio=left_data.get('axis_ratio', left_data.get('y_sens', 50)),
                 overlap_percent=left_data.get('overlap', 50),
                 mouse_dpi=left_data.get('mouse_dpi', 50),
+                invert_x=left_data.get('invert_x', False),
+                invert_y=left_data.get('invert_y', False),
                 is_circle=not left_data.get('square', False),
                 deadzone_min=left_data.get('deadzone_min', 5),
                 antideadzone_min=left_data.get('antideadzone_min', 0),
@@ -338,10 +431,11 @@ def set_stick_endpoint():
             right_cfg = StickConfig(
                 stick_id=1,
                 mode=right_data.get('mode', 'native'),
-                x_sensitivity=right_data.get('x_sens', 50),
-                y_sensitivity=right_data.get('y_sens', 50),
+                axis_ratio=right_data.get('axis_ratio', right_data.get('y_sens', 50)),
                 overlap_percent=right_data.get('overlap', 50),
                 mouse_dpi=right_data.get('mouse_dpi', 50),
+                invert_x=right_data.get('invert_x', False),
+                invert_y=right_data.get('invert_y', False),
                 is_circle=not right_data.get('square', False),
                 deadzone_min=right_data.get('deadzone_min', 5),
                 antideadzone_min=right_data.get('antideadzone_min', 0),
@@ -351,7 +445,7 @@ def set_stick_endpoint():
                 curve_intensity=right_data.get('curve_intensity', 50),
             )
             
-            if left_data.get('mode') == 'keyboard':
+            if left_cfg.mode == 'wheel':
                 kbd = KeyboardMapping(
                     left=left_data.get('kbd_left', 0x04),
                     right=left_data.get('kbd_right', 0x07),
@@ -364,7 +458,7 @@ def set_stick_endpoint():
                 )
                 left_cfg.keyboard = kbd
             
-            if right_data.get('mode') == 'keyboard':
+            if right_cfg.mode == 'wheel':
                 kbd = KeyboardMapping(
                     left=right_data.get('kbd_left', 0x04),
                     right=right_data.get('kbd_right', 0x07),
@@ -386,10 +480,11 @@ def set_stick_endpoint():
             cfg = StickConfig(
                 stick_id=0 if stick == 'left' else 1,
                 mode=mode,
-                x_sensitivity=data.get('x_sens', 50),
-                y_sensitivity=data.get('y_sens', 50),
+                axis_ratio=data.get('axis_ratio', data.get('y_sens', 50)),
                 overlap_percent=data.get('overlap', 50),
                 mouse_dpi=data.get('mouse_dpi', 50),
+                invert_x=data.get('invert_x', False),
+                invert_y=data.get('invert_y', False),
                 is_circle=not data.get('square', False),
                 deadzone_min=data.get('deadzone_min', 5),
                 antideadzone_min=data.get('antideadzone_min', 0),
@@ -399,7 +494,7 @@ def set_stick_endpoint():
                 curve_intensity=data.get('curve_intensity', 50),
             )
             
-            if mode == 'keyboard':
+            if cfg.mode == 'wheel':
                 kbd = KeyboardMapping(
                     left=data.get('kbd_left', 0x04),
                     right=data.get('kbd_right', 0x07),
@@ -437,8 +532,8 @@ def set_gyro_endpoint():
             activate_button=resolve_gyro_button(data.get('button', 'c1')),
             x_sensitivity=data.get('x_sens', 50),
             y_sensitivity=data.get('y_sens', 50),
+            axis_ratio=data.get('axis_ratio', 50),
             overlap_percent=data.get('overlap', 50),
-            mouse_dpi=data.get('mouse_dpi', 50),
             deadzone_min=data.get('deadzone_min', 0),
             deadzone_max=data.get('deadzone_max', 100),
             antideadzone_min=data.get('antideadzone_min', 0),
@@ -486,19 +581,26 @@ def set_map_endpoint():
 
 @app.route('/api/mappings/read', methods=['POST'])
 def read_mappings_endpoint():
-    """Read button remaps from controller hardware."""
+    """Read button remaps (and turbo) from controller hardware."""
     if not find_dongle_path():
         return jsonify({'error': 'GameSir Dongle not found'}), 503
     try:
-        mappings = read_button_mappings()
+        detailed = read_button_mappings_detailed()
+        mappings = detailed.get('key_mappings', {})
+        turbo_settings = detailed.get('turbo_settings', {})
         sync = False
         if request.is_json and request.json:
             sync = bool(request.json.get('sync', False))
         if sync:
             config = load_config()
             config['key_mappings'] = mappings
+            if turbo_settings:
+                config['turbo_settings'] = turbo_settings
             save_config(config)
-        return jsonify({'key_mappings': mappings})
+        return jsonify({
+            'key_mappings': mappings,
+            'turbo_settings': turbo_settings,
+        })
     except FileNotFoundError as e:
         return jsonify({'error': str(e)}), 503
     except Exception as e:
@@ -573,7 +675,6 @@ def set_rumble_endpoint():
 def set_turbo_endpoint():
     """Set turbo/continuous fire on a button."""
     try:
-        import time
         data = request.json
         
         button = data.get('button')
@@ -581,30 +682,12 @@ def set_turbo_endpoint():
         rate = data.get('rate')
         continuous = data.get('continuous', False)
         
-        btn = resolve_button_index(button)
-        remap = resolve_target_packet(btn, target)
-        turbo_enabled = rate is not None
-        rate_val = rate if turbo_enabled else 1
-        turbo = apply_turbo(remap, rate_val, continuous, turbo=turbo_enabled)
-        enable = turbo_enable_packet(btn)
-        commit = bytearray(32)
-        commit[0:4] = [0x07, 0x03, 0x08, 0x03]
-        
-        fd = open_device()
-        try:
-            os.write(fd, turbo)
-            time.sleep(0.03)
-            os.write(fd, enable)
-            time.sleep(0.03)
-            os.write(fd, commit)
-            time.sleep(0.03)
-        finally:
-            os.close(fd)
-        
+        set_turbo(button, target, rate, continuous)
+
         return jsonify({'success': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='127.0.0.1', port=5000, debug=False)

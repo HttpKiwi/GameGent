@@ -46,15 +46,40 @@ def set_color(hue: int):
     send_raw_bytes(pkt)
 
 
-def set_abxy_layout(layout: str):
-    """Set ABXY button layout. Header: 07 09 09 01. layout: 'xbox' or 'switch'."""
+def build_layout_packet(layout: str, dpad_params: bytes) -> bytes:
+    """SetDPadParam 07 09 09 01: b4 type, b5 swap, b6 layout, b7 auto on/off, b8 trigger
+    auto-calibration, b9 macro switch. Copies b4..b9 from a GetDPadParam reply, sets b6."""
     layout = layout.lower().strip()
     if layout not in ("xbox", "switch"):
         raise ValueError(f"Unknown layout: {layout}")
     packet = bytearray(32)
     packet[0:4] = [0x07, 0x09, 0x09, 0x01]
+    # Copy only the fields the reply actually carries (length byte = data + 3); older
+    # firmware sends 4 (type, swap, layout, auto on/off), newer adds calibration + macro key.
+    n = max(0, min(6, dpad_params[1] - 3))
+    packet[4:4 + n] = dpad_params[4:4 + n]
     packet[6] = 0x01 if layout == "xbox" else 0x02
-    send_raw_bytes(packet)
+    return bytes(packet)
+
+
+def read_dpad_params() -> bytes | None:
+    """GetDPadParam (07 03 09 02) reply, or None."""
+    from .transport import open_device, close_device, drain, send_cmd, read_reply
+    fd = open_device()
+    try:
+        drain(fd)
+        send_cmd(fd, bytes([0x07, 0x03, 0x09, 0x02]))
+        return read_reply(fd, 0x09, 0x02)
+    finally:
+        close_device(fd)
+
+
+def set_abxy_layout(layout: str):
+    """Change only the layout byte; the packet also carries D-pad/auto-calibration settings."""
+    current = read_dpad_params()
+    if current is None:
+        raise RuntimeError("Could not read D-pad params; not writing layout (would reset them)")
+    send_raw_bytes(build_layout_packet(layout, current))
 
 
 def set_led_color(target: str, hue: int, saturation: int = 100, lightness: int = 50):
