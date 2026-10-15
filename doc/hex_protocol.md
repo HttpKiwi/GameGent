@@ -5,7 +5,7 @@
 GameGent is a native Linux tool for configuring the GameSir Tarantula Pro controller via USB HID. It communicates directly with the controller's USB HID interface using 32-byte packets to configure:
 
 - Lighting modes and colors
-- Stick behavior (native, mouse, keyboard, clone modes)
+- Stick behavior (native, mouse, wheel, clone modes)
 - Gyro/motion aim
 - Button remapping (write + read), combos, and macros
 - Trigger deadzones and hair trigger
@@ -138,14 +138,14 @@ Bytes 14-16: Y button (hue, saturation, lightness)
 
 ### core/stick.py
 
-**Purpose**: Stick configuration (modes, curves, keyboard mapping, mouse DPI).
+**Purpose**: Stick configuration (modes, curves, wheel-mode keys, mouse DPI, invert).
 
 **Stick Modes**:
 ```
 native:    0x00
 mouse:     0x01
-keyboard:  0x02
-clone:     0x03
+wheel:     0x02   (keys)
+clone:     0x03   (output as the other stick)
 ```
 
 **Curve Presets** (coords are 6 bytes, curve_type is 1 byte):
@@ -159,14 +159,14 @@ s-curve:   coords=[0x0e,0x1e,0x2c,0x32,0x4a,0x46], curve_type=0x02
 ```
 Header: 07 0f 02 03
 Byte 4:  stick_id (0=left, 1=right)
-Byte 5:  overlap_percent (keyboard mode) or x_sensitivity
-Byte 6:  y_sensitivity
-Byte 7:  0x50 (fixed)
-Bytes 8-9: 0x00 (padding)
+Byte 5:  diagonal angle / overlap %
+Byte 6:  0x28 (innerTriggerRange)
+Byte 7:  0x50 (outerTriggerRange)
+Bytes 8-9: invert X / invert Y
 Byte 10: mode byte
 Byte 11: 0x01 (fixed)
-Byte 12: mouse_x_dpi (mouse mode only)
-Byte 13: mouse_y_dpi (mouse mode only)
+Bytes 12-13: mouse DPI X / Y (mouse mode only)
+Bytes 14-15: invert X / invert Y (again)
 ```
 
 **Geometry Packet** (`build_geometry_packet`):

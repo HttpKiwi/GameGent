@@ -646,11 +646,11 @@ body {
 
 .save-status {
   font-size: 0.9rem;
-  color: var(--text-secondary, #8a8f98);
+  color: var(--text-secondary);
 }
 
 .save-status--error {
-  color: var(--danger, #e5484d);
+  color: var(--danger);
 }
 
 .global-save-btn {

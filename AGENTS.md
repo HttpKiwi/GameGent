@@ -58,16 +58,3 @@ Details: `doc/remapping.md`, `doc/hex_protocol.md`, `core/read_remap.py`.
 ```bash
 cd web/react-app && npm run typecheck && npx eslint .
 ```
-
-## Goal — Razer Viper Mini software
-
-GameGent is the reference for a **similar standalone Linux app for the user's Razer Viper Mini** (`1532:008A`), which the user intends to build. Full background: `doc/handoff-razer-viper-mini.md`.
-
-**User need:** Synapse Hypershift: side button + scroll → spam `E` (Apex loot), without Synapse on Linux.
-
-**Known state:**
-- DPI / poll rate / logo RGB: already in OpenRazer (since ~2.9.0), so reuse its protocol rather than re-deriving it.
-- Onboard / Hypershift remaps: not supported in OpenRazer for the Viper Mini. This is the part to reverse-engineer (compare to the Basilisk Ultimate remap, class `0x02` / cmd `0x0c`, [openrazer#2845](https://github.com/openrazer/openrazer/issues/2845); [RE wiki](https://github.com/openrazer/openrazer/wiki/Reverse-Engineering-USB-Protocol)).
-- Stopgap if needed: host-side [input-remapper](https://github.com/sezanzeb/input-remapper) Hypershift.
-
-GameGent remap docs remain the local RE pattern reference: `doc/remapping.md`, `doc/hex_protocol.md`, `core/read_remap.py`.
