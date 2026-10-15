@@ -39,7 +39,7 @@ gamegent app
 - `GET /api/gamepad` — live tester: vendor state report when the dongle is present (`source: vendor`, all physical buttons incl. L4/R4/T1–T3/C1–C4, `core/raw_state.py`), else `/dev/input/js*` (`source: js`)
 - `GET /api/device` — battery, firmware, MAC (`core/device_info.py`); `POST /api/reset` — factory-reset config sections (`core/defaults.py`)
 - `POST /api/config/autosave` — UI edits: save working config **and active profile**, push only changed sections (`core/profiles.py:autosave_config`); 409 if the active profile changed since the client loaded it. `POST /api/config` also mirrors into the active profile.
-- UI polls status (~2s) and mappings (~4s) while connected; skips overwrite if config is dirty
+- UI polls status (~2s) and mappings (~10s) while connected; skips overwrite if config is dirty
 - Game watcher runs in Flask (serve/app) **or** standalone `gamegent daemon` (lock-shared; only one at a time)
 - User systemd unit: `gamegent-daemon.service` (installed by `./install.sh`)
 

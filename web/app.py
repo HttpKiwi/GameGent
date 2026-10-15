@@ -3,6 +3,7 @@
 
 import sys
 import os
+import threading
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from urllib.parse import urlsplit
@@ -565,18 +566,45 @@ def set_map_endpoint():
         return jsonify({'error': str(e)}), 500
 
 
+_remap_lock = threading.Lock()
+_remap_cache: dict = {'time': 0.0, 'value': None}
+
+
+def _read_remaps_shared(fresh: bool) -> dict:
+    """Read remaps from the controller; overlapping polls share one read.
+
+    A read takes ~2.5 s and holds the device lock, so a poll that arrives while one is running
+    (or right after) gets the cached result instead of queueing another read; with nothing cached
+    yet it waits for the running read. `fresh` (Pull from Device) always reads.
+    """
+    import time as _time
+
+    def cached():
+        return _remap_cache['value'] if _time.monotonic() - _remap_cache['time'] < 1.5 else None
+
+    if not fresh:
+        if cached():
+            return cached()
+        if _remap_lock.locked() and _remap_cache['value']:
+            return _remap_cache['value']  # a read is running: serve the previous result
+    with _remap_lock:
+        if not fresh and cached():
+            return cached()  # the read we waited for just finished
+        value = read_button_mappings_detailed()
+        _remap_cache.update(time=_time.monotonic(), value=value)
+        return value
+
+
 @app.route('/api/mappings/read', methods=['POST'])
 def read_mappings_endpoint():
     """Read button remaps (and turbo) from controller hardware."""
     if not find_dongle_path():
         return jsonify({'error': 'GameSir Dongle not found'}), 503
     try:
-        detailed = read_button_mappings_detailed()
+        sync = bool(request.is_json and request.json and request.json.get('sync', False))
+        detailed = _read_remaps_shared(fresh=sync)
         mappings = detailed.get('key_mappings', {})
         turbo_settings = detailed.get('turbo_settings', {})
-        sync = False
-        if request.is_json and request.json:
-            sync = bool(request.json.get('sync', False))
         if sync:
             config = load_config()
             config['key_mappings'] = mappings

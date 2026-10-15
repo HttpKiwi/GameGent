@@ -44,7 +44,7 @@ export function useDeviceMappingsPoll(connected: boolean) {
     queryKey: ['device-mappings'],
     queryFn: () => api.readDeviceMappings(false),
     enabled: connected,
-    refetchInterval: 4000,
+    refetchInterval: 10000, // a read takes ~2.5 s and holds the device lock
     retry: false,
   });
 

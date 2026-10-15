@@ -155,7 +155,7 @@ def read_button_mapping(fd, button_index: int) -> bytes | None:
     """Read one button's remap packet. Returns raw response bytes or None."""
     drain(fd)
     _request_remap(fd, button_index)
-    pending = _collect_remap_responses(fd, {button_index}, timeout=1.0)
+    pending = _collect_remap_responses(fd, {button_index}, timeout=0.5)
     return pending.get(button_index)
 
 
@@ -194,7 +194,7 @@ def _parse_macro_step(data: bytes) -> dict | None:
     }
 
 
-def read_macro_steps(fd, button_index: int, max_steps: int = 16) -> list[dict]:
+def read_macro_steps(fd, button_index: int, max_steps: int = 12) -> list[dict]:
     """Read macro steps for a button via OUT 07 13 01 02 [btn] [step]."""
     steps: list[dict] = []
     for step in range(max_steps):
@@ -281,20 +281,15 @@ def read_remap_state() -> dict[int, dict]:
         init_session(fd)
         drain(fd)
 
-        # Request all remap slots, buffering responses by button id.
+        # One request at a time: the dongle drops most replies when 26 requests are queued at
+        # once (10 of 26 came back, then a 2.5 s timeout), but answers a single one in ~50 ms.
+        pending: dict[int, bytes] = {}
         for button_index in REMAP_BUTTON_IDS:
-            _request_remap(fd, button_index)
-            time.sleep(0.02)
-
-        pending = _collect_remap_responses(fd, set(REMAP_BUTTON_IDS), timeout=2.5)
-        # Catch stragglers
-        pending.update(_collect_remap_responses(fd, None, timeout=0.35))
-        # Re-request misses individually
-        missing = [b for b in REMAP_BUTTON_IDS if b not in pending]
-        for button_index in missing:
-            drain(fd)
-            _request_remap(fd, button_index)
-            pending.update(_collect_remap_responses(fd, {button_index}, timeout=0.8))
+            for _attempt in range(2):
+                data = read_button_mapping(fd, button_index)
+                if data:
+                    pending[button_index] = data
+                    break
 
         state: dict[int, dict] = {}
         macro_candidates: list[int] = []

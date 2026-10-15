@@ -476,6 +476,36 @@ def test_raw_reader_enables_reads_and_restores():
     assert modes[-1] == raw_state.MODE_OFF and reader.snapshot()[0] is None
 
 
+def test_overlapping_remap_polls_share_one_read():
+    import threading, time
+    import web.app as wa
+    calls = []
+
+    def slow_read():
+        calls.append(1)
+        time.sleep(0.3)
+        return {"key_mappings": {"l4": "controller:a"}, "turbo_settings": {}}
+
+    orig = wa.read_button_mappings_detailed
+    wa.read_button_mappings_detailed = slow_read
+    wa._remap_cache.update(time=0.0, value=None)
+    results = []
+    try:
+        ths = [threading.Thread(target=lambda: results.append(wa._read_remaps_shared(False))) for _ in range(4)]
+        for t in ths:
+            t.start()
+            time.sleep(0.05)
+        for t in ths:
+            t.join()
+        assert len(calls) == 1 and all(r["key_mappings"] == {"l4": "controller:a"} for r in results)
+        assert wa._read_remaps_shared(False)["key_mappings"]       # served from cache
+        assert len(calls) == 1
+        wa._read_remaps_shared(True)                               # "Pull from Device" always reads
+        assert len(calls) == 2
+    finally:
+        wa.read_button_mappings_detailed = orig
+
+
 if __name__ == "__main__":
     for name, fn in list(globals().items()):
         if name.startswith("test_"):
